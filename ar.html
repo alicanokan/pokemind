@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>PokeMind — AR Hunt</title>
+<script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+<script src="https://unpkg.com/aframe-look-at-component@0.8.0/dist/aframe-look-at-component.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+  #startOverlay {
+    position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 20px; text-align: center; padding: 24px;
+    background: linear-gradient(160deg, #2a75bb 0%, #3b4cca 100%); color: #fff;
+  }
+  #startOverlay h1 { color: #ffcb05; text-shadow: 2px 2px 0 rgba(0,0,0,.35); }
+  #startOverlay p { max-width: 420px; line-height: 1.5; opacity: .9; }
+  #startBtn {
+    padding: 18px 40px; font-size: 1.3rem; font-weight: 700; border: none;
+    border-radius: 999px; background: #ffcb05; color: #2a75bb; box-shadow: 0 6px 0 #c7a008;
+  }
+  #startBtn:active { transform: scale(.96); }
+
+  .hud { position: fixed; z-index: 40; pointer-events: none; }
+  #status {
+    top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,.6); color: #fff; padding: 8px 16px; border-radius: 999px;
+    font-size: .85rem; white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis;
+  }
+  #pokedexBtn {
+    bottom: max(18px, env(safe-area-inset-bottom)); right: 16px; pointer-events: auto;
+    background: #ee1515; color: #fff; border: 3px solid #fff; border-radius: 999px;
+    padding: 12px 18px; font-size: 1rem; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  }
+  #mapBtn {
+    bottom: max(18px, env(safe-area-inset-bottom)); left: 16px; pointer-events: auto;
+    background: #2a75bb; color: #fff; border: 3px solid #fff; border-radius: 999px;
+    padding: 12px 18px; font-size: 1rem; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  }
+  #dropBtn {
+    bottom: max(18px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+    pointer-events: auto; background: #2ecc71; color: #fff; border: 3px solid #fff;
+    border-radius: 999px; padding: 12px 20px; font-size: 1rem; font-weight: 700;
+    box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  }
+  #pickerPanel {
+    position: fixed; inset: 0; z-index: 48; background: rgba(0,0,0,.85); color: #fff;
+    display: none; flex-direction: column; padding: 24px; overflow-y: auto;
+  }
+  #pickerPanel.open { display: flex; }
+  #pickerPanel h2 { color: #2ecc71; margin-bottom: 6px; }
+  #pickerPanel p { font-size: .85rem; opacity: .85; margin-bottom: 16px; }
+  #pickerGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 12px; }
+  .pick { text-align: center; background: rgba(255,255,255,.1); border-radius: 12px; padding: 10px; cursor: pointer; }
+  .pick:active { background: rgba(46,204,113,.4); }
+  .pick img { width: 64px; height: 64px; object-fit: contain; }
+  .pick div { font-size: .75rem; margin-top: 4px; text-transform: capitalize; }
+  #closePicker {
+    margin-top: 20px; align-self: center; padding: 12px 32px; border: none;
+    border-radius: 999px; background: #ffcb05; color: #2a75bb; font-weight: 700; font-size: 1rem;
+  }
+  #toast {
+    top: 42%; left: 50%; transform: translate(-50%,-50%) scale(0); text-align: center;
+    background: #ffcb05; color: #2a75bb; font-weight: 800; font-size: 1.4rem;
+    padding: 16px 28px; border-radius: 20px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    transition: transform .25s cubic-bezier(.34,1.56,.64,1);
+  }
+  #toast.show { transform: translate(-50%,-50%) scale(1); }
+
+  /* map mode */
+  #mapPanel {
+    position: fixed; inset: 0; z-index: 46; background: #000; display: none;
+  }
+  #mapPanel.open { display: block; }
+  #miniMap { position: absolute; inset: 0; }
+  #closeMap {
+    position: absolute; bottom: max(18px, env(safe-area-inset-bottom)); left: 50%;
+    transform: translateX(-50%); z-index: 1001; background: #ee1515; color: #fff;
+    border: 3px solid #fff; border-radius: 999px; padding: 14px 32px;
+    font-size: 1.05rem; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,.5);
+  }
+  #centerMe {
+    position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; z-index: 1001;
+    background: #ffcb05; color: #2a75bb; border: 3px solid #fff; border-radius: 999px;
+    padding: 12px 16px; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,.5);
+  }
+  #imHereBtn {
+    position: absolute; top: max(14px, env(safe-area-inset-top)); left: 14px; z-index: 1001;
+    background: #ff8c00; color: #fff; border: 3px solid #fff; border-radius: 999px;
+    padding: 12px 16px; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,.5);
+  }
+  #imHereBtn.arm { background: #ee1515; animation: pulse 1s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+  #calibBadge {
+    position: fixed; z-index: 40; top: calc(max(12px, env(safe-area-inset-top)) + 44px);
+    left: 50%; transform: translateX(-50%); background: rgba(255,140,0,.92); color: #fff;
+    padding: 6px 14px; border-radius: 999px; font-size: .8rem; font-weight: 700; pointer-events: none;
+  }
+  .poke-mini img { width: 38px; height: 38px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+
+  #pokedexPanel {
+    position: fixed; inset: 0; z-index: 47; background: rgba(0,0,0,.85); color: #fff;
+    display: none; flex-direction: column; padding: 24px; overflow-y: auto;
+  }
+  #pokedexPanel.open { display: flex; }
+  #pokedexPanel h2 { color: #ffcb05; margin-bottom: 16px; }
+  #caughtList { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 12px; }
+  .caught { text-align: center; background: rgba(255,255,255,.1); border-radius: 12px; padding: 10px; }
+  .caught img { width: 64px; height: 64px; object-fit: contain; }
+  .caught div { font-size: .75rem; margin-top: 4px; text-transform: capitalize; }
+  #closeDex {
+    margin-top: 20px; align-self: center; padding: 12px 32px; border: none;
+    border-radius: 999px; background: #ffcb05; color: #2a75bb; font-weight: 700; font-size: 1rem;
+  }
+</style>
+</head>
+<body>
+
+<div id="startOverlay">
+  <h1>⚡ PokeMind AR</h1>
+  <p>Pokémon are hiding around you in the real world — some inside buildings on upper floors! Use the <b>🗺️ Map</b> button to see where you are and where they hide, then walk close and <b>tap to catch</b>.</p>
+  <p>You'll be asked for <b>camera</b>, <b>motion</b> and <b>location</b> permission — allow all three.</p>
+  <button id="startBtn">Start Hunting</button>
+</div>
+
+<div class="hud" id="status" hidden>Getting GPS…</div>
+<button class="hud" id="mapBtn" hidden>🗺️ Map</button>
+<button class="hud" id="dropBtn" hidden>➕ Drop</button>
+<button class="hud" id="pokedexBtn" hidden>⭕ 0</button>
+<div class="hud" id="toast"></div>
+
+<div id="pickerPanel">
+  <h2>➕ Drop a Pokémon here</h2>
+  <p>It will appear a few steps <b>in front of you</b> and stay there — reopen the game and it's still waiting. Everyone can see and catch it!</p>
+  <div id="pickerGrid"></div>
+  <button id="closePicker">Cancel</button>
+</div>
+
+<div id="mapPanel">
+  <div id="miniMap"></div>
+  <button id="imHereBtn">🎯 I'm here</button>
+  <button id="centerMe">📍 Me</button>
+  <button id="closeMap">Back to AR 📷</button>
+</div>
+<div id="calibBadge" hidden></div>
+
+<div id="pokedexPanel">
+  <h2>Your Pokédex</h2>
+  <div id="caughtList"></div>
+  <button id="closeDex">Close</button>
+</div>
+
+<script>
+const statusEl = document.getElementById('status');
+const toastEl = document.getElementById('toast');
+const dexBtn = document.getElementById('pokedexBtn');
+const dexPanel = document.getElementById('pokedexPanel');
+
+let floorHeight = 3;      // meters per floor in AR — calibrated live from /api/calibration
+const CATCH_RADIUS = 40;  // meters — get this close to catch
+
+let myPos = null;                 // {lat, lng}
+const placed = new Map();         // id -> {root, img, o}
+let buildings = [];
+const caught = JSON.parse(localStorage.getItem('pokedex') || '[]');
+const caughtIds = new Set(caught.map(c => c.id));
+
+function updateDexBtn() { dexBtn.textContent = '⭕ ' + caught.length; }
+updateDexBtn();
+
+function showToast(msg, ms = 1800) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+
+function distMeters(a, b) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat/2)**2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+function floorLabel(o) {
+  if (!o.buildingName) return '';
+  return o.floor > 0 ? ` (🏠 ${o.buildingName}, floor ${o.floor})` : ` (🏠 ${o.buildingName})`;
+}
+
+document.getElementById('startBtn').addEventListener('click', async () => {
+  // iOS 13+ requires an explicit user-gesture permission for compass/motion
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
+      await DeviceOrientationEvent.requestPermission();
+    }
+    if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
+      await DeviceMotionEvent.requestPermission();
+    }
+  } catch (e) { /* user denied — AR.js will still try */ }
+
+  document.getElementById('startOverlay').remove();
+  statusEl.hidden = false;
+  dexBtn.hidden = false;
+  document.getElementById('mapBtn').hidden = false;
+  document.getElementById('dropBtn').hidden = false;
+  buildScene();
+});
+
+function buildScene() {
+  document.body.insertAdjacentHTML('beforeend', `
+    <a-scene
+      vr-mode-ui="enabled: false"
+      arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
+      renderer="antialias: true; alpha: true"
+      embedded>
+      <a-entity cursor="rayOrigin: mouse" raycaster="objects: .clickable; far: 10000"></a-entity>
+      <a-camera gps-new-camera="gpsMinDistance: 1"></a-camera>
+    </a-scene>`);
+
+  const scene = document.querySelector('a-scene');
+  const camera = document.querySelector('[gps-new-camera]');
+
+  camera.addEventListener('gps-camera-update-position', (e) => {
+    myPos = { lat: e.detail.position.latitude, lng: e.detail.position.longitude };
+    refreshStatus();
+    rescaleAll();
+    updateMiniMe();
+  });
+
+  scene.addEventListener('loaded', () => {
+    loadBuildings();
+    loadObjects();
+    setInterval(loadObjects, 20000); // pick up newly-placed pokemon
+    pollCalibration();
+    setInterval(pollCalibration, 3000); // live height calibration from the desktop admin
+  });
+}
+
+// ---------- height calibration (desktop moves a test object up/down, you watch it live) ----------
+let calibRoot = null, calibLift = null, calibState = null;
+const calibBadge = document.getElementById('calibBadge');
+const CALIB_SPRITE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/143.png';
+
+async function pollCalibration() {
+  let c;
+  try { c = await (await fetch('/api/calibration')).json(); }
+  catch { return; }
+
+  if (isFinite(c.floorHeight) && c.floorHeight !== floorHeight) {
+    floorHeight = c.floorHeight;
+    reliftAll();
+    showToast(`Floor height calibrated: ${floorHeight} m 📏`);
+  }
+
+  if (c.active && isFinite(c.lat) && isFinite(c.lng)) {
+    const h = isFinite(c.height) ? c.height : 0;
+    if (!calibRoot) {
+      const scene = document.querySelector('a-scene');
+      if (!scene) return;
+      calibRoot = document.createElement('a-entity');
+      calibRoot.setAttribute('gps-new-entity-place', `latitude: ${c.lat}; longitude: ${c.lng}`);
+      calibRoot.setAttribute('scale', '1.5 1.5 1.5'); // home-scale: ~1.5m Snorlax
+      calibLift = document.createElement('a-entity');
+      calibLift.setAttribute('position', `0 ${h} 0`);
+      const img = document.createElement('a-image');
+      img.setAttribute('src', c.sprite || CALIB_SPRITE);
+      img.setAttribute('look-at', '[gps-new-camera]');
+      img.setAttribute('transparent', 'true');
+      img.setAttribute('animation__spin',
+        'property: rotation; to: 0 360 0; dur: 4000; loop: true; easing: linear');
+      calibLift.appendChild(img);
+      calibRoot.appendChild(calibLift);
+      scene.appendChild(calibRoot);
+    } else {
+      if (!calibState || c.lat !== calibState.lat || c.lng !== calibState.lng) {
+        calibRoot.setAttribute('gps-new-entity-place', `latitude: ${c.lat}; longitude: ${c.lng}`);
+      }
+      calibLift.setAttribute('position', `0 ${h} 0`);
+    }
+    calibState = c;
+    calibBadge.hidden = false;
+    calibBadge.textContent = `🎯 Calibration object at ${h.toFixed(1)} m — watch it move!`;
+  } else {
+    if (calibRoot) { calibRoot.remove(); calibRoot = null; calibLift = null; }
+    calibState = null;
+    calibBadge.hidden = true;
+  }
+}
+
+async function loadBuildings() {
+  try { buildings = await (await fetch('/api/buildings')).json(); }
+  catch { buildings = []; }
+  drawMiniBuildings();
+}
+
+async function loadObjects() {
+  let objects;
+  try { objects = await (await fetch('/api/objects')).json(); }
+  catch { return; }
+
+  const alive = new Set();
+  for (const o of objects) {
+    alive.add(o.id);
+    if (caughtIds.has(o.id) || placed.has(o.id)) continue;
+    spawn(o);
+  }
+  // remove ones deleted from the admin map
+  for (const [id, p] of placed) {
+    if (!alive.has(id)) { p.root.remove(); miniPoke.get(id)?.remove(); miniPoke.delete(id); placed.delete(id); }
+  }
+  refreshStatus();
+  drawMiniPokes();
+}
+
+function spawn(o) {
+  const scene = document.querySelector('a-scene');
+  const root = document.createElement('a-entity');
+  root.setAttribute('gps-new-entity-place', `latitude: ${o.lat}; longitude: ${o.lng}`);
+
+  // lift by floor height so upper-floor pokemon float at the right level
+  const lift = document.createElement('a-entity');
+  lift.setAttribute('position', `0 ${(o.floor || 0) * floorHeight} 0`);
+
+  const img = document.createElement('a-image');
+  img.setAttribute('src', o.sprite);
+  img.setAttribute('look-at', '[gps-new-camera]');
+  img.setAttribute('transparent', 'true');
+  img.setAttribute('class', 'clickable');
+  img.setAttribute('animation__bob',
+    'property: object3D.position.y; from: -0.15; to: 0.15; dur: 1600; dir: alternate; loop: true; easing: easeInOutSine');
+  img.addEventListener('click', () => tryCatch(o));
+
+  root.setAttribute('scale', '1.5 1.5 1.5'); // sensible size until first GPS fix arrives
+  lift.appendChild(img);
+  root.appendChild(lift);
+  scene.appendChild(root);
+  placed.set(o.id, { root, lift, img, o });
+}
+
+function reliftAll() {
+  for (const p of placed.values()) {
+    p.lift.setAttribute('position', `0 ${(p.o.floor || 0) * floorHeight} 0`);
+  }
+}
+
+function tryCatch(o) {
+  const p = placed.get(o.id);
+  if (!p) return;
+  const d = myPos ? distMeters(myPos, o) : Infinity;
+  if (d > CATCH_RADIUS) {
+    showToast(`${cap(o.name)} is ${Math.round(d)}m away — get closer!`);
+    return;
+  }
+  p.root.setAttribute('animation__catch',
+    'property: scale; to: 0 0 0; dur: 500; easing: easeInBack');
+  setTimeout(() => {
+    p.root.remove(); placed.delete(o.id);
+    miniPoke.get(o.id)?.remove(); miniPoke.delete(o.id);
+    refreshStatus();
+  }, 520);
+
+  caught.push({ id: o.id, name: o.name, sprite: o.sprite, at: Date.now() });
+  caughtIds.add(o.id);
+  localStorage.setItem('pokedex', JSON.stringify(caught));
+  updateDexBtn();
+  showToast(`Gotcha! ${cap(o.name)} was caught! 🎉`);
+}
+
+function rescaleAll() {
+  if (!myPos) return;
+  for (const p of placed.values()) {
+    const d = distMeters(myPos, p.o);
+    // home-scale: ~1m sprite up close (like a real pokemon in your room),
+    // growing gently with distance so far ones stay visible, never room-sized
+    const s = Math.min(Math.max(d * 0.12, 1), 10);
+    p.root.setAttribute('scale', `${s} ${s} ${s}`);
+  }
+}
+
+function refreshStatus() {
+  if (!myPos) { statusEl.textContent = 'Getting GPS… (go outside for best signal)'; return; }
+  let nearest = null, nd = Infinity;
+  for (const p of placed.values()) {
+    const d = distMeters(myPos, p.o);
+    if (d < nd) { nd = d; nearest = p.o; }
+  }
+  statusEl.textContent = nearest
+    ? `${placed.size} wild · Nearest: ${cap(nearest.name)}${floorLabel(nearest)} — ${Math.round(nd)}m ${nd <= CATCH_RADIUS ? '· TAP IT! 🎯' : ''}`
+    : 'No Pokémon nearby… ask the admin to place some!';
+}
+
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+// ---------- map mode ----------
+const mapPanel = document.getElementById('mapPanel');
+let miniMap = null, meMarker = null, meCircle = null;
+const miniPoke = new Map();   // id -> marker
+let miniBuildLayer = null;
+let followMe = true;
+
+document.getElementById('mapBtn').addEventListener('click', () => {
+  mapPanel.classList.add('open');
+  if (!miniMap) initMiniMap();
+  setTimeout(() => miniMap.invalidateSize(), 60);
+  centerOnBest();
+});
+document.getElementById('closeMap').addEventListener('click', () => mapPanel.classList.remove('open'));
+document.getElementById('centerMe').addEventListener('click', () => {
+  followMe = true;
+  if (myPos) miniMap.setView([myPos.lat, myPos.lng], 18);
+  else showToast('Waiting for GPS…');
+});
+
+function initMiniMap() {
+  miniMap = L.map('miniMap', { zoomControl: false }).setView([41.0082, 28.9784], 15);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap',
+  }).addTo(miniMap);
+  miniMap.on('dragstart', () => { followMe = false; });
+  miniMap.on('click', onMiniMapClick);
+  drawMiniBuildings();
+  drawMiniPokes();
+  updateMiniMe();
+}
+
+// "I'm here" — mark your exact indoor position for the desktop height calibration
+let imHereArmed = false, hereMarker = null;
+const imHereBtn = document.getElementById('imHereBtn');
+imHereBtn.addEventListener('click', () => {
+  imHereArmed = !imHereArmed;
+  imHereBtn.classList.toggle('arm', imHereArmed);
+  imHereBtn.textContent = imHereArmed ? '👇 Tap the map!' : "🎯 I'm here";
+});
+
+async function onMiniMapClick(e) {
+  if (!imHereArmed) return;
+  imHereArmed = false;
+  imHereBtn.classList.remove('arm');
+  imHereBtn.textContent = "🎯 I'm here";
+  const { lat, lng } = e.latlng;
+  if (!hereMarker) {
+    hereMarker = L.circleMarker([lat, lng], { radius: 10, color: '#fff', weight: 3, fillColor: '#ff8c00', fillOpacity: 1 }).addTo(miniMap);
+    hereMarker.bindTooltip('Your marked spot', { direction: 'top' });
+  } else hereMarker.setLatLng([lat, lng]);
+  try {
+    await fetch('/api/calibration', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userLat: lat, userLng: lng }),
+    });
+    showToast('Spot sent to the admin! 🎯 They can now calibrate the height.');
+  } catch { showToast('Could not reach the server 😕'); }
+}
+
+function centerOnBest() {
+  if (!miniMap) return;
+  if (myPos) { miniMap.setView([myPos.lat, myPos.lng], 18); return; }
+  const pts = [...placed.values()].map(p => [p.o.lat, p.o.lng]);
+  if (pts.length) miniMap.fitBounds(pts, { padding: [50, 50], maxZoom: 18 });
+}
+
+function updateMiniMe() {
+  if (!miniMap || !myPos) return;
+  const ll = [myPos.lat, myPos.lng];
+  if (!meMarker) {
+    meMarker = L.circleMarker(ll, { radius: 9, color: '#fff', weight: 3, fillColor: '#2a75bb', fillOpacity: 1 }).addTo(miniMap);
+    meCircle = L.circle(ll, { radius: CATCH_RADIUS, color: '#2ecc71', weight: 2, fillColor: '#2ecc71', fillOpacity: .12 }).addTo(miniMap);
+    meMarker.bindTooltip('You', { direction: 'top' });
+    miniMap.setView(ll, 18);
+  } else {
+    meMarker.setLatLng(ll);
+    meCircle.setLatLng(ll);
+    if (followMe) miniMap.panTo(ll);
+  }
+}
+
+function drawMiniPokes() {
+  if (!miniMap) return;
+  for (const p of placed.values()) {
+    if (miniPoke.has(p.o.id)) continue;
+    const icon = L.divIcon({
+      className: 'poke-mini',
+      html: `<img src="${p.o.sprite}" alt="${p.o.name}">`,
+      iconSize: [38, 38], iconAnchor: [19, 34],
+    });
+    const m = L.marker([p.o.lat, p.o.lng], { icon }).addTo(miniMap);
+    m.bindTooltip(`${cap(p.o.name)}${floorLabel(p.o)}`, { direction: 'top' });
+    miniPoke.set(p.o.id, m);
+  }
+}
+
+function drawMiniBuildings() {
+  if (!miniMap) return;
+  miniBuildLayer?.remove();
+  miniBuildLayer = L.layerGroup(buildings.map(b => {
+    const poly = L.polygon(b.polygon, { color: '#3b4cca', weight: 2, fillColor: '#3b4cca', fillOpacity: .2 });
+    poly.bindTooltip(`🏠 ${b.name} · ${b.floors}F`, { direction: 'center' });
+    return poly;
+  })).addTo(miniMap);
+}
+
+// ---------- drop mode: place a pokemon right in front of you ----------
+const SPRITE = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
+const DROPPABLE = [
+  { id: 25, name: 'pikachu' },   { id: 1, name: 'bulbasaur' },  { id: 4, name: 'charmander' },
+  { id: 7, name: 'squirtle' },   { id: 133, name: 'eevee' },    { id: 39, name: 'jigglypuff' },
+  { id: 52, name: 'meowth' },    { id: 54, name: 'psyduck' },   { id: 143, name: 'snorlax' },
+  { id: 94, name: 'gengar' },    { id: 6, name: 'charizard' },  { id: 150, name: 'mewtwo' },
+  { id: 149, name: 'dragonite' },{ id: 129, name: 'magikarp' }, { id: 58, name: 'growlithe' },
+  { id: 37, name: 'vulpix' },    { id: 92, name: 'gastly' },    { id: 131, name: 'lapras' },
+  { id: 132, name: 'ditto' },    { id: 104, name: 'cubone' },   { id: 151, name: 'mew' },
+];
+const pickerPanel = document.getElementById('pickerPanel');
+const pickerGrid = document.getElementById('pickerGrid');
+DROPPABLE.forEach(p => {
+  const el = document.createElement('div');
+  el.className = 'pick';
+  el.innerHTML = `<img src="${SPRITE(p.id)}" loading="lazy" alt="${p.name}"><div>${p.name}</div>`;
+  el.addEventListener('click', () => { pickerPanel.classList.remove('open'); dropPokemon(p); });
+  pickerGrid.appendChild(el);
+});
+
+document.getElementById('dropBtn').addEventListener('click', () => {
+  if (!myPos) { showToast('Waiting for GPS… go near a window or outside 📡'); return; }
+  pickerPanel.classList.add('open');
+});
+document.getElementById('closePicker').addEventListener('click', () => pickerPanel.classList.remove('open'));
+
+function posInFrontOfMe(distM) {
+  // offset your GPS position by distM meters in the direction the camera faces
+  let east = 0, north = 1; // fallback: north
+  try {
+    const cam = document.querySelector('[gps-new-camera]');
+    const v = new THREE.Vector3();
+    cam.object3D.getWorldDirection(v); // AR.js world: +x = east, -z = north
+    if (Math.hypot(v.x, v.z) > 0.1) {
+      const len = Math.hypot(v.x, v.z);
+      east = v.x / len;
+      north = -v.z / len;
+    }
+  } catch {}
+  const lat = myPos.lat + (north * distM) / 111320;
+  const lng = myPos.lng + (east * distM) / (111320 * Math.cos(myPos.lat * Math.PI / 180));
+  return { lat, lng };
+}
+
+async function dropPokemon(p) {
+  const { lat, lng } = posInFrontOfMe(3.5);
+  let obj;
+  try {
+    const res = await fetch('/api/objects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: p.name, sprite: SPRITE(p.id), lat, lng }),
+    });
+    obj = await res.json();
+  } catch { showToast('Could not reach the server 😕'); return; }
+  spawn(obj);
+  rescaleAll();
+  drawMiniPokes();
+  refreshStatus();
+  showToast(`${cap(p.name)} dropped right in front of you! 👀`);
+}
+
+// ---------- pokedex ----------
+dexBtn.addEventListener('click', () => {
+  const list = document.getElementById('caughtList');
+  list.innerHTML = caught.length
+    ? caught.map(c => `<div class="caught"><img src="${c.sprite}" alt=""><div>${cap(c.name)}</div></div>`).join('')
+    : '<p>Nothing caught yet — go hunt!</p>';
+  dexPanel.classList.add('open');
+});
+document.getElementById('closeDex').addEventListener('click', () => dexPanel.classList.remove('open'));
+</script>
+</body>
+</html>
