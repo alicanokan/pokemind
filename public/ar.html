@@ -165,6 +165,7 @@ let floorHeight = 3;      // meters per floor in AR — calibrated live from /ap
 const CATCH_RADIUS = 40;  // meters — get this close to catch
 
 let myPos = null;                 // {lat, lng}
+let gpsAccuracy = null;           // meters, from our own watchPosition
 const placed = new Map();         // id -> {root, img, o}
 let buildings = [];
 const caught = JSON.parse(localStorage.getItem('pokedex') || '[]');
@@ -232,6 +233,27 @@ function buildScene() {
     rescaleAll();
     updateMiniMe();
   });
+
+  // Run our OWN geolocation watch and feed fixes straight into the AR engine.
+  // AR.js's internal watcher silently stalls on some iOS versions (the mapper
+  // page gets GPS fine while the AR page sits on "Getting GPS…" forever).
+  navigator.geolocation.watchPosition((pos) => {
+    const { latitude, longitude, accuracy } = pos.coords;
+    gpsAccuracy = accuracy;
+    const comp = camera.components['gps-new-camera'];
+    const loc = comp && (comp.threeLoc || comp.threeLocationBased || comp._threeLoc);
+    if (loc && typeof loc.fakeGps === 'function') {
+      // drives the camera position AND fires gps-camera-update-position above
+      loc.fakeGps(longitude, latitude);
+    } else {
+      myPos = { lat: latitude, lng: longitude };
+      refreshStatus();
+      rescaleAll();
+      updateMiniMe();
+    }
+  }, (err) => {
+    statusEl.textContent = `❌ Location error: ${err.message} — check Settings → Privacy → Location → Safari`;
+  }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
 
   scene.addEventListener('loaded', () => {
     loadBuildings();
@@ -385,14 +407,15 @@ function rescaleAll() {
 
 function refreshStatus() {
   if (!myPos) { statusEl.textContent = 'Getting GPS… (go outside for best signal)'; return; }
+  const acc = gpsAccuracy ? `GPS ±${Math.round(gpsAccuracy)}m · ` : '';
   let nearest = null, nd = Infinity;
   for (const p of placed.values()) {
     const d = distMeters(myPos, p.o);
     if (d < nd) { nd = d; nearest = p.o; }
   }
   statusEl.textContent = nearest
-    ? `${placed.size} wild · Nearest: ${cap(nearest.name)}${floorLabel(nearest)} — ${Math.round(nd)}m ${nd <= CATCH_RADIUS ? '· TAP IT! 🎯' : ''}`
-    : 'No Pokémon nearby… ask the admin to place some!';
+    ? `${acc}${placed.size} wild · ${cap(nearest.name)}${floorLabel(nearest)} — ${Math.round(nd)}m ${nd <= CATCH_RADIUS ? '· TAP IT! 🎯' : ''}`
+    : `${acc}No Pokémon nearby… drop one with ➕!`;
 }
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
