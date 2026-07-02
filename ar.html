@@ -221,7 +221,7 @@ function buildScene() {
       renderer="antialias: true; alpha: true"
       embedded>
       <a-entity cursor="rayOrigin: mouse" raycaster="objects: .clickable; far: 10000"></a-entity>
-      <a-camera gps-new-camera="gpsMinDistance: 1"></a-camera>
+      <a-camera gps-new-camera="gpsMinDistance: 1; initialPositionAsOrigin: true"></a-camera>
     </a-scene>`);
 
   const scene = document.querySelector('a-scene');
@@ -231,6 +231,7 @@ function buildScene() {
     myPos = { lat: e.detail.position.latitude, lng: e.detail.position.longitude };
     refreshStatus();
     rescaleAll();
+    positionAll();
     updateMiniMe();
   });
 
@@ -251,6 +252,7 @@ function buildScene() {
     } catch (e) { /* AR camera not ready yet — game UI still works */ }
     refreshStatus();
     rescaleAll();
+    positionAll();
     updateMiniMe();
   }
   function onGpsError(err) {
@@ -268,6 +270,7 @@ function buildScene() {
     setInterval(loadObjects, 20000); // pick up newly-placed pokemon
     pollCalibration();
     setInterval(pollCalibration, 3000); // live height calibration from the desktop admin
+    setInterval(positionAll, 1000);     // keep objects glued to the camera's frame
   });
 }
 
@@ -293,8 +296,7 @@ async function pollCalibration() {
       const scene = document.querySelector('a-scene');
       if (!scene) return;
       calibRoot = document.createElement('a-entity');
-      calibRoot.setAttribute('gps-new-entity-place', `latitude: ${c.lat}; longitude: ${c.lng}`);
-      calibRoot.setAttribute('scale', '1.5 1.5 1.5'); // home-scale: ~1.5m Snorlax
+      calibRoot.setAttribute('scale', '1.5 1.5 1.5'); // home-scale: ~1.5m Snorlax; positioned by positionAll
       calibLift = document.createElement('a-entity');
       calibLift.setAttribute('position', `0 ${h} 0`);
       const img = document.createElement('a-image');
@@ -307,12 +309,10 @@ async function pollCalibration() {
       calibRoot.appendChild(calibLift);
       scene.appendChild(calibRoot);
     } else {
-      if (!calibState || c.lat !== calibState.lat || c.lng !== calibState.lng) {
-        calibRoot.setAttribute('gps-new-entity-place', `latitude: ${c.lat}; longitude: ${c.lng}`);
-      }
       calibLift.setAttribute('position', `0 ${h} 0`);
     }
     calibState = c;
+    positionAll();
     calibBadge.hidden = false;
     calibBadge.textContent = `🎯 Calibration object at ${h.toFixed(1)} m — watch it move!`;
   } else {
@@ -350,7 +350,10 @@ async function loadObjects() {
 function spawn(o) {
   const scene = document.querySelector('a-scene');
   const root = document.createElement('a-entity');
-  root.setAttribute('gps-new-entity-place', `latitude: ${o.lat}; longitude: ${o.lng}`);
+  // NOTE: no gps-new-entity-place — that component uses absolute Web-Mercator
+  // world coordinates (millions of meters), which breaks float32 rendering
+  // precision. We position roots ourselves relative to the camera instead
+  // (see positionAll below).
 
   // lift by floor height so upper-floor pokemon float at the right level
   const lift = document.createElement('a-entity');
@@ -370,11 +373,37 @@ function spawn(o) {
   root.appendChild(lift);
   scene.appendChild(root);
   placed.set(o.id, { root, lift, img, o });
+  positionAll();
 }
 
 function reliftAll() {
   for (const p of placed.values()) {
     p.lift.setAttribute('position', `0 ${(p.o.floor || 0) * floorHeight} 0`);
+  }
+}
+
+// Position every object ourselves: meters east/north of where WE know the
+// player is, relative to the AR camera. Small numbers near the origin —
+// no Mercator projections, no library placement code, no precision loss.
+function metersOffset(from, to) {
+  const east = (to.lng - from.lng) * 111320 * Math.cos(from.lat * Math.PI / 180);
+  const north = (to.lat - from.lat) * 111320;
+  return { east, north };
+}
+
+function positionAll() {
+  if (!myPos) return;
+  const camEl = document.querySelector('[gps-new-camera]');
+  if (!camEl) return;
+  const cp = camEl.object3D.position;
+  for (const p of placed.values()) {
+    const { east, north } = metersOffset(myPos, p.o);
+    // AR.js world axes: +x = east, -z = north; keep them ~1m below eye level
+    p.root.object3D.position.set(cp.x + east, cp.y - 1, cp.z - north);
+  }
+  if (calibRoot && calibState) {
+    const { east, north } = metersOffset(myPos, calibState);
+    calibRoot.object3D.position.set(cp.x + east, cp.y - 1.6, cp.z - north);
   }
 }
 
