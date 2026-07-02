@@ -107,5 +107,38 @@
     "buildingId": null,
     "buildingName": null,
     "createdAt": "2026-07-02T15:09:16.777Z"
+  },
+  {
+    "id": "652d5810-7856-4c54-b169-58edfb3d129a",
+    "name": "jigglypuff",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/39.png",
+    "lat": 41.05258564945517,
+    "lng": 28.988621399275203,
+    "floor": 0,
+    "buildingId": null,
+    "buildingName": null,
+    "createdAt": "2026-07-02T16:07:38.946Z"
+  },
+  {
+    "id": "00b355e2-7f2a-4964-817a-eeea0d768e10",
+    "name": "psyduck",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/54.png",
+    "lat": 41.0526143193346,
+    "lng": 28.98849207533037,
+    "floor": 0,
+    "buildingId": null,
+    "buildingName": null,
+    "createdAt": "2026-07-02T16:07:55.176Z"
+  },
+  {
+    "id": "32560ece-21e9-4799-9e7b-1cdc2363913d",
+    "name": "snorlax",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/143.png",
+    "lat": 41.052592887610615,
+    "lng": 28.988495700620867,
+    "floor": 0,
+    "buildingId": null,
+    "buildingName": null,
+    "createdAt": "2026-07-02T16:08:01.567Z"
   }
 ]
