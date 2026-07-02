@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokeMind — AR Pokémon Hunt</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 22px; padding: 24px; text-align: center;
+    background: linear-gradient(160deg, #2a75bb 0%, #3b4cca 100%); color: #fff;
+  }
+  h1 { font-size: 2.4rem; color: #ffcb05; text-shadow: 2px 2px 0 #2a75bb, 4px 4px 0 rgba(0,0,0,.3); }
+  p.tag { opacity: .9; max-width: 520px; line-height: 1.5; }
+  .buttons { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  a.btn {
+    display: inline-block; padding: 16px 28px; border-radius: 999px; font-size: 1.1rem;
+    font-weight: 700; text-decoration: none; transition: transform .15s;
+  }
+  a.btn:active { transform: scale(.96); }
+  .play { background: #ffcb05; color: #2a75bb; box-shadow: 0 6px 0 #c7a008; }
+  .house { background: #2ecc71; color: #fff; box-shadow: 0 6px 0 #1e8f4e; }
+  .admin { background: #fff; color: #3b4cca; box-shadow: 0 6px 0 #b8b8d0; }
+  .qrs { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .qr {
+    background: #fff; padding: 14px; border-radius: 16px; color: #2a75bb;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .qr img { display: block; width: 160px; height: 160px; }
+  .qr b { font-size: .9rem; }
+  .qr code { font-size: .68rem; background: #eef; color: #3b4cca; padding: 2px 6px; border-radius: 6px; }
+  .hint { font-size: .85rem; opacity: .85; max-width: 460px; line-height: 1.6; }
+  .hint code { background: rgba(0,0,0,.25); padding: 2px 6px; border-radius: 6px; }
+</style>
+</head>
+<body>
+  <h1>⚡ PokeMind</h1>
+  <p class="tag">Map your house, place Pokémon on the real-world map (even inside buildings, on any floor!),
+  then walk around and catch them in AR through your phone camera.</p>
+  <div class="buttons">
+    <a class="btn play" href="/ar.html">📱 Play AR</a>
+    <a class="btn house" href="/mapper.html">🏠 Map My House</a>
+    <a class="btn admin" href="/admin.html">🗺️ Admin Map</a>
+  </div>
+  <div class="qrs" id="qrs" hidden>
+    <div class="qr">
+      <b>📱 Play AR</b>
+      <img id="qrPlay" alt="QR: open the AR game on your phone">
+      <code id="urlPlay"></code>
+    </div>
+    <div class="qr">
+      <b>🏠 Map My House</b>
+      <img id="qrHouse" alt="QR: map your house on your phone">
+      <code id="urlHouse"></code>
+    </div>
+  </div>
+  <p class="hint">Scan with your phone (same Wi-Fi). Allow <b>camera</b>, <b>location</b> and <b>motion</b> access.
+  If the browser warns about the certificate, tap <i>Show details → Visit website</i> (it's your own local server).</p>
+<script>
+  const QR = 'https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=';
+  fetch('/api/info').then(r => r.json()).then(info => {
+    const play = info.lanUrl + '/ar.html';
+    const house = info.lanUrl + '/mapper.html';
+    document.getElementById('qrPlay').src = QR + encodeURIComponent(play);
+    document.getElementById('qrHouse').src = QR + encodeURIComponent(house);
+    document.getElementById('urlPlay').textContent = play;
+    document.getElementById('urlHouse').textContent = house;
+    document.getElementById('qrs').hidden = false;
+  }).catch(() => {});
+</script>
+</body>
+</html>

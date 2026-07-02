@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>PokeMind — Map My House</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; background: #000; }
+  #map { position: fixed; inset: 0; }
+  button { cursor: pointer; }
+  button:active { transform: scale(.95); }
+  [hidden] { display: none !important; }
+
+  /* ---- mode chooser ---- */
+  #chooser {
+    position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px; padding: 24px; text-align: center;
+    background: linear-gradient(160deg, #2a75bb 0%, #3b4cca 100%); color: #fff;
+  }
+  #chooser h1 { color: #ffcb05; text-shadow: 2px 2px 0 rgba(0,0,0,.35); }
+  #chooser p { max-width: 420px; line-height: 1.5; opacity: .92; }
+  #chooser button {
+    width: 100%; max-width: 340px; padding: 18px; border: none; border-radius: 18px;
+    font-size: 1.05rem; font-weight: 700; text-align: left; line-height: 1.4;
+  }
+  #chooser button small { display: block; font-weight: 400; font-size: .8rem; opacity: .8; }
+  #scanChoice { background: #ffcb05; color: #2a75bb; }
+  #drawChoice { background: #fff; color: #3b4cca; }
+  #chooser a { color: #ffcb05; font-size: .85rem; }
+
+  /* ---- camera scan ---- */
+  #scanView { position: fixed; inset: 0; z-index: 2500; background: #000; }
+  #camVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #scanTop {
+    position: absolute; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,.65); color: #fff; padding: 10px 18px; border-radius: 16px;
+    font-size: .85rem; font-weight: 600; text-align: center; width: min(94vw, 420px); line-height: 1.45;
+  }
+  #scanMiniMap {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 130px; height: 170px; border-radius: 14px; overflow: hidden;
+    border: 3px solid #fff; box-shadow: 0 4px 14px rgba(0,0,0,.5); z-index: 10;
+  }
+  #scanControls {
+    position: absolute; bottom: max(16px, env(safe-area-inset-bottom)); left: 0; right: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 10; padding: 0 14px;
+  }
+  #cornerBtn {
+    width: min(100%, 340px); padding: 20px; border: 4px solid #fff; border-radius: 999px;
+    background: #ee1515; color: #fff; font-size: 1.2rem; font-weight: 800;
+    box-shadow: 0 6px 18px rgba(0,0,0,.5);
+  }
+  #scanRow { display: flex; gap: 10px; }
+  #scanRow button {
+    padding: 12px 20px; border: 2px solid #fff; border-radius: 999px; font-weight: 700; font-size: .95rem;
+  }
+  #scanFinish { background: #2ecc71; color: #fff; }
+  #scanCancel { background: rgba(0,0,0,.6); color: #fff; }
+  #gpsBadge {
+    position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; z-index: 10;
+    background: rgba(0,0,0,.65); color: #ffcb05; font-size: .75rem; font-weight: 700;
+    padding: 8px 12px; border-radius: 999px;
+  }
+
+  /* ---- fine-tune / draw ---- */
+  #topBar {
+    position: fixed; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    z-index: 1000; background: rgba(42,117,187,.95); color: #fff; padding: 10px 18px;
+    border-radius: 16px; font-size: .85rem; font-weight: 600; text-align: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,.35); width: min(94vw, 440px); line-height: 1.45;
+  }
+  #controls {
+    position: fixed; bottom: max(14px, env(safe-area-inset-bottom)); left: 50%;
+    transform: translateX(-50%); z-index: 1000; display: flex; gap: 10px; flex-wrap: wrap;
+    justify-content: center; width: 100%; padding: 0 12px;
+  }
+  #controls button {
+    padding: 14px 18px; border: none; border-radius: 999px; font-size: 1rem; font-weight: 700;
+    box-shadow: 0 4px 14px rgba(0,0,0,.35);
+  }
+  .yellow { background: #ffcb05; color: #2a75bb; }
+  .white { background: #fff; color: #3b4cca; }
+  .red { background: #ee1515; color: #fff; }
+  .green { background: #2ecc71; color: #fff; }
+
+  /* ---- save modal ---- */
+  #saveModal {
+    position: fixed; inset: 0; z-index: 4000; background: rgba(0,0,0,.7);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  #saveModal.open { display: flex; }
+  #saveModal .card {
+    background: #fff; border-radius: 20px; padding: 24px; width: 100%; max-width: 360px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  #saveModal h2 { color: #2a75bb; font-size: 1.2rem; }
+  #saveModal label { font-size: .85rem; font-weight: 600; color: #444; }
+  #saveModal input { width: 100%; padding: 12px; font-size: 1rem; border: 2px solid #ccc; border-radius: 10px; }
+  #saveModal .row { display: flex; gap: 10px; }
+  #saveModal .row button { flex: 1; padding: 14px; border: none; border-radius: 12px; font-weight: 700; font-size: 1rem; }
+
+  .bld-tooltip { font-weight: 700; }
+  .popup-del { background: #ee1515; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 700; }
+  .vertex-icon {
+    width: 22px; height: 22px; border-radius: 50%; background: #ee1515;
+    border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.5);
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- mode chooser -->
+<div id="chooser">
+  <h1>🏠 Map My House</h1>
+  <p>Teach PokeMind where your house is, so Pokémon can hide inside it — on any floor.</p>
+  <button id="scanChoice">📷 Scan by walking around
+    <small>Opens your camera. Walk around your house and tap "Mark corner" at each corner — your GPS traces the shape. Fine-tune it at the end.</small>
+  </button>
+  <button id="drawChoice">✏️ Draw on the map
+    <small>Trace your roof outline on satellite view by tapping its corners.</small>
+  </button>
+  <a href="/">← Back to home</a>
+</div>
+
+<!-- camera scan -->
+<div id="scanView" hidden>
+  <video id="camVideo" autoplay muted playsinline></video>
+  <div id="scanTop">🚶 Walk around your house.<br>Stand at each <b>corner</b> and tap the red button.</div>
+  <div id="gpsBadge">GPS: waiting…</div>
+  <div id="scanMiniMap"></div>
+  <div id="scanControls">
+    <button id="cornerBtn">📍 Mark corner (0)</button>
+    <div id="scanRow">
+      <button id="scanFinish">✅ Finish scan</button>
+      <button id="scanCancel">✖️ Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- fine-tune / draw UI -->
+<div id="topBar" hidden></div>
+<div id="controls" hidden>
+  <button class="yellow" id="locateBtn">📍 Me</button>
+  <button class="white" id="layerBtn">🛰️ / 🗺️</button>
+  <button class="white" id="undoBtn">↩️ Undo</button>
+  <button class="red" id="cancelBtn">✖️ Cancel</button>
+  <button class="green" id="saveBtn">✅ Save</button>
+</div>
+
+<div id="saveModal">
+  <div class="card">
+    <h2>🏠 Save your building</h2>
+    <div>
+      <label for="bName">Building name</label>
+      <input id="bName" placeholder="e.g. Alican's home" maxlength="60">
+    </div>
+    <div>
+      <label for="bFloors">How many floors? (including ground)</label>
+      <input id="bFloors" type="number" min="1" max="100" value="2" inputmode="numeric">
+    </div>
+    <div class="row">
+      <button id="modalCancel" style="background:#eee;color:#444">Back</button>
+      <button id="modalSave" style="background:#2ecc71;color:#fff">Save 🏠</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================= shared map =================
+const map = L.map('map', { zoomControl: false }).setView([41.0082, 28.9784], 13);
+const streets = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OSM' });
+const satellite = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, attribution: '&copy; Esri' });
+satellite.addTo(map);
+let satOn = true;
+document.getElementById('layerBtn').addEventListener('click', () => {
+  satOn = !satOn;
+  map.removeLayer(satOn ? streets : satellite);
+  (satOn ? satellite : streets).addTo(map);
+});
+
+let myMarker = null;
+function showMe(lat, lng) {
+  if (!myMarker) myMarker = L.circleMarker([lat, lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#2a75bb', fillOpacity: 1 }).addTo(map);
+  else myMarker.setLatLng([lat, lng]);
+}
+document.getElementById('locateBtn').addEventListener('click', () => {
+  navigator.geolocation?.getCurrentPosition(pos => {
+    showMe(pos.coords.latitude, pos.coords.longitude);
+    map.setView([pos.coords.latitude, pos.coords.longitude], 19);
+  });
+});
+navigator.geolocation?.getCurrentPosition(pos => {
+  showMe(pos.coords.latitude, pos.coords.longitude);
+  map.setView([pos.coords.latitude, pos.coords.longitude], 18);
+});
+
+// existing buildings
+const drawn = new Map();
+function addBuilding(b) {
+  const poly = L.polygon(b.polygon, { color: '#3b4cca', weight: 3, fillColor: '#3b4cca', fillOpacity: .25 }).addTo(map);
+  poly.bindTooltip(`🏠 ${b.name} · ${b.floors}F`, { className: 'bld-tooltip', direction: 'center' });
+  poly.bindPopup(`<b>🏠 ${b.name}</b><br>${b.floors} floor(s)<br><br>
+    <button class="popup-del" onclick="removeBuilding('${b.id}')">Delete building</button>`);
+  drawn.set(b.id, poly);
+}
+async function removeBuilding(id) {
+  await fetch('/api/buildings/' + id, { method: 'DELETE' });
+  drawn.get(id)?.remove();
+  drawn.delete(id);
+}
+fetch('/api/buildings').then(r => r.json()).then(list => list.forEach(addBuilding));
+
+// ================= modes =================
+const chooser = document.getElementById('chooser');
+const scanView = document.getElementById('scanView');
+const topBar = document.getElementById('topBar');
+const controls = document.getElementById('controls');
+let mode = 'chooser'; // chooser | scan | edit | draw
+
+// ================= camera scan =================
+let stream = null, watchId = null;
+let lastFix = null, path = [], corners = [];
+let scanMap = null, scanPath = null, scanDots = [];
+
+document.getElementById('scanChoice').addEventListener('click', startScan);
+document.getElementById('drawChoice').addEventListener('click', () => {
+  chooser.hidden = true;
+  enterEdit([], 'draw');
+});
+
+async function startScan() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }, audio: false,
+    });
+  } catch (e) {
+    alert('Camera blocked — allow camera access, or use "Draw on the map" instead.');
+    return;
+  }
+  document.getElementById('camVideo').srcObject = stream;
+  chooser.hidden = true;
+  scanView.hidden = false;
+  mode = 'scan';
+  path = []; corners = []; lastFix = null;
+  updateCornerBtn();
+
+  if (!scanMap) {
+    scanMap = L.map('scanMiniMap', { zoomControl: false, attributionControl: false, dragging: false, tap: false });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(scanMap);
+  }
+  scanPath?.remove(); scanPath = null;
+  scanDots.forEach(d => d.remove()); scanDots = [];
+  scanMap.setView([41.0082, 28.9784], 18);
+  setTimeout(() => scanMap.invalidateSize(), 100);
+
+  watchId = navigator.geolocation.watchPosition(onFix, () => {
+    document.getElementById('gpsBadge').textContent = 'GPS: blocked!';
+  }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
+}
+
+function onFix(pos) {
+  const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+  document.getElementById('gpsBadge').textContent = `GPS: ±${Math.round(accuracy)}m`;
+  const fix = { lat, lng };
+  // record the walking path (a point every ~2m) as backup shape
+  if (!lastFix || distM(lastFix, fix) > 2) {
+    path.push([lat, lng]);
+    lastFix = fix;
+    scanPath?.remove();
+    if (path.length >= 2) scanPath = L.polyline(path, { color: '#ffcb05', weight: 4 }).addTo(scanMap);
+  }
+  scanMap.setView([lat, lng], 19);
+}
+
+function distM(a, b) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+function updateCornerBtn() {
+  document.getElementById('cornerBtn').textContent = `📍 Mark corner (${corners.length})`;
+}
+
+document.getElementById('cornerBtn').addEventListener('click', () => {
+  if (!lastFix) { document.getElementById('scanTop').innerHTML = '⏳ Waiting for GPS… stand still a moment, outdoors helps.'; return; }
+  corners.push([lastFix.lat, lastFix.lng]);
+  navigator.vibrate?.(80);
+  scanDots.push(L.circleMarker(lastFix, { radius: 7, color: '#fff', weight: 2, fillColor: '#ee1515', fillOpacity: 1 }).addTo(scanMap));
+  updateCornerBtn();
+  document.getElementById('scanTop').innerHTML =
+    corners.length < 3
+      ? `✔️ Corner ${corners.length} saved!<br>Walk to the next corner of your house and mark it.`
+      : `✔️ ${corners.length} corners saved — mark more, or tap <b>✅ Finish</b> to fine-tune.`;
+});
+
+function stopScanHardware() {
+  if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  stream?.getTracks().forEach(t => t.stop());
+  stream = null;
+}
+
+document.getElementById('scanCancel').addEventListener('click', () => {
+  stopScanHardware();
+  scanView.hidden = true;
+  chooser.hidden = false;
+  mode = 'chooser';
+});
+
+document.getElementById('scanFinish').addEventListener('click', () => {
+  let pts;
+  if (corners.length >= 3) pts = corners.slice();
+  else if (path.length >= 3) pts = downsample(path, 10); // no corners marked — use the walked path
+  else {
+    document.getElementById('scanTop').innerHTML = '❗ Not enough data yet — mark at least 3 corners (or walk more).';
+    return;
+  }
+  stopScanHardware();
+  scanView.hidden = true;
+  enterEdit(pts, 'scan');
+});
+
+function downsample(arr, n) {
+  if (arr.length <= n) return arr.slice();
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(arr[Math.floor(i * arr.length / n)]);
+  return out;
+}
+
+// ================= fine-tune / draw =================
+let points = [];        // [lat,lng]
+let vertexMarkers = [];
+let preview = null;
+
+function enterEdit(initialPoints, source) {
+  mode = source === 'draw' && initialPoints.length === 0 ? 'draw' : 'edit';
+  points = initialPoints.slice();
+  topBar.hidden = false;
+  controls.hidden = false;
+  topBar.innerHTML = points.length
+    ? '🔧 <b>Fine-tune:</b> drag the red dots to match your house exactly. Tap the map to add a point. Then ✅ Save.'
+    : '✏️ Tap the corners of your house on the map (3+ points), drag dots to adjust, then ✅ Save.';
+  rebuildVertices();
+  if (points.length >= 3) {
+    map.fitBounds(points, { padding: [70, 70], maxZoom: 19 });
+  }
+}
+
+function rebuildVertices() {
+  vertexMarkers.forEach(m => m.remove()); vertexMarkers = [];
+  points.forEach((pt, i) => {
+    const m = L.marker(pt, {
+      draggable: true,
+      icon: L.divIcon({ className: '', html: '<div class="vertex-icon"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }),
+    }).addTo(map);
+    m.on('drag', e => {
+      points[i] = [e.latlng.lat, e.latlng.lng];
+      redrawPreview();
+    });
+    vertexMarkers.push(m);
+  });
+  redrawPreview();
+}
+
+function redrawPreview() {
+  preview?.remove(); preview = null;
+  if (points.length >= 2) {
+    preview = L.polygon(points, { color: '#ffcb05', weight: 3, fillColor: '#ffcb05', fillOpacity: .25 }).addTo(map);
+  }
+  document.getElementById('saveBtn').textContent = `✅ Save (${points.length})`;
+}
+
+map.on('click', e => {
+  if (mode !== 'edit' && mode !== 'draw') return;
+  points.push([e.latlng.lat, e.latlng.lng]);
+  rebuildVertices();
+});
+
+document.getElementById('undoBtn').addEventListener('click', () => {
+  points.pop();
+  rebuildVertices();
+});
+
+function exitEdit() {
+  points = [];
+  vertexMarkers.forEach(m => m.remove()); vertexMarkers = [];
+  preview?.remove(); preview = null;
+  topBar.hidden = true;
+  controls.hidden = true;
+  chooser.hidden = false;
+  mode = 'chooser';
+}
+document.getElementById('cancelBtn').addEventListener('click', exitEdit);
+
+// ================= save =================
+const modal = document.getElementById('saveModal');
+document.getElementById('saveBtn').addEventListener('click', () => {
+  if (points.length < 3) { topBar.innerHTML = '❗ Need at least 3 corners — keep tapping!'; return; }
+  modal.classList.add('open');
+});
+document.getElementById('modalCancel').addEventListener('click', () => modal.classList.remove('open'));
+document.getElementById('modalSave').addEventListener('click', async () => {
+  const name = document.getElementById('bName').value.trim() || 'My house';
+  const floors = Math.max(1, parseInt(document.getElementById('bFloors').value, 10) || 1);
+  const res = await fetch('/api/buildings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, floors, polygon: points }),
+  });
+  const bld = await res.json();
+  modal.classList.remove('open');
+  addBuilding(bld);
+  exitEdit();
+  chooser.hidden = true;
+  topBar.hidden = false;
+  topBar.innerHTML = `🎉 <b>"${bld.name}"</b> saved with ${bld.floors} floor(s)!<br>` +
+    `Admin can now hide Pokémon inside. <a href="/" style="color:#ffcb05">← home</a> · ` +
+    `<a href="#" style="color:#ffcb05" onclick="location.reload();return false">map another</a>`;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokeMind — Admin Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #app { display: flex; height: 100%; }
+  #sidebar {
+    width: 280px; min-width: 280px; background: #2a75bb; color: #fff;
+    display: flex; flex-direction: column; padding: 16px; gap: 12px; overflow-y: auto;
+  }
+  #sidebar h1 { font-size: 1.3rem; color: #ffcb05; }
+  #sidebar p { font-size: .82rem; opacity: .9; line-height: 1.45; }
+  #pokeGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .poke {
+    background: rgba(255,255,255,.12); border: 2px solid transparent; border-radius: 12px;
+    padding: 6px 2px; text-align: center; cursor: pointer; transition: .12s;
+  }
+  .poke:hover { background: rgba(255,255,255,.25); }
+  .poke.selected { border-color: #ffcb05; background: rgba(255,203,5,.25); }
+  .poke img { width: 52px; height: 52px; object-fit: contain; }
+  .poke div { font-size: .68rem; text-transform: capitalize; margin-top: 2px; }
+  button.action {
+    padding: 10px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer;
+    background: #ffcb05; color: #2a75bb; font-size: .9rem;
+  }
+  button.action.secondary { background: rgba(255,255,255,.9); color: #3b4cca; }
+  #count { font-size: .85rem; background: rgba(0,0,0,.25); padding: 8px 12px; border-radius: 10px; line-height: 1.5; }
+  #map { flex: 1; }
+  .poke-marker img { width: 44px; height: 44px; filter: drop-shadow(0 3px 3px rgba(0,0,0,.45)); }
+  .popup-name { font-weight: 700; text-transform: capitalize; margin-bottom: 6px; }
+  .popup-sub { font-size: .8rem; color: #555; margin-bottom: 6px; }
+  .popup-del {
+    background: #ee1515; color: #fff; border: none; border-radius: 8px;
+    padding: 6px 12px; cursor: pointer; font-weight: 700;
+  }
+  .floor-popup select {
+    width: 100%; padding: 8px; font-size: 1rem; border-radius: 8px; border: 2px solid #ccc; margin: 8px 0;
+  }
+  .floor-popup button {
+    width: 100%; background: #2ecc71; color: #fff; border: none; border-radius: 8px;
+    padding: 8px; font-weight: 700; cursor: pointer;
+  }
+  .bld-tooltip { font-weight: 700; }
+  a.back { color: #ffcb05; font-size: .85rem; }
+
+  #calibBox {
+    background: rgba(0,0,0,.28); border-radius: 12px; padding: 12px;
+    display: flex; flex-direction: column; gap: 8px; font-size: .82rem;
+  }
+  #calibBox b.title { color: #ffcb05; font-size: .9rem; }
+  #calibBox .hgt { font-size: 1.4rem; font-weight: 800; text-align: center; color: #ffcb05; }
+  #calibBtns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  #calibBtns button {
+    padding: 10px 0; border: none; border-radius: 8px; font-weight: 800; font-size: .9rem;
+    background: #ffcb05; color: #2a75bb; cursor: pointer;
+  }
+  #calibBox .rowline { display: flex; gap: 6px; align-items: center; }
+  #calibBox input {
+    width: 56px; padding: 6px; border-radius: 8px; border: none; font-size: .9rem; text-align: center;
+  }
+  #calibBox button.wide {
+    padding: 9px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: .82rem;
+  }
+  .greenBtn { background: #2ecc71; color: #fff; }
+  .redBtn { background: #ee1515; color: #fff; }
+  @media (max-width: 640px) {
+    #app { flex-direction: column; }
+    #sidebar { width: 100%; min-width: 0; max-height: 45%; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <h1>🗺️ PokeMind Admin</h1>
+    <p><b>1.</b> Pick a Pokémon below.<br><b>2.</b> Click anywhere on the map to place it.<br><b>3.</b> Click inside a <b>🏠 blue building</b> to hide it on a specific floor!</p>
+    <div id="pokeGrid"></div>
+    <button class="action" id="locateBtn">📍 Center on my location</button>
+    <button class="action secondary" id="scatterBtn">🎲 Scatter 5 random here</button>
+
+    <div id="calibBox">
+      <b class="title">🎯 Height calibration</b>
+      <div id="calibStatus">Waiting… the player taps <b>🎯 I'm here</b> on their phone's map.</div>
+      <button class="wide greenBtn" id="calibStart" disabled>Start at player's spot</button>
+      <div id="calibControls" hidden>
+        <div class="hgt" id="calibHeight">0.0 m</div>
+        <div id="calibBtns">
+          <button data-d="-1">−1</button>
+          <button data-d="-0.1">−.1</button>
+          <button data-d="0.1">+.1</button>
+          <button data-d="1">+1</button>
+        </div>
+        <div class="rowline" style="margin-top:6px">
+          <span>Player says it's at floor</span>
+          <input id="calibFloor" type="number" min="1" max="50" value="1">
+        </div>
+        <button class="wide greenBtn" id="calibSave">📏 Save floor height</button>
+        <button class="wide redBtn" id="calibEnd">End calibration</button>
+      </div>
+      <div id="floorHeightInfo"></div>
+    </div>
+
+    <div id="count">Loading…</div>
+    <a class="back" href="/">← Back to home</a>
+  </div>
+  <div id="map"></div>
+</div>
+
+<script>
+const SPRITE = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
+const POKEMON = [
+  { id: 25, name: 'pikachu' },   { id: 1, name: 'bulbasaur' },  { id: 4, name: 'charmander' },
+  { id: 7, name: 'squirtle' },   { id: 133, name: 'eevee' },    { id: 39, name: 'jigglypuff' },
+  { id: 52, name: 'meowth' },    { id: 54, name: 'psyduck' },   { id: 143, name: 'snorlax' },
+  { id: 94, name: 'gengar' },    { id: 6, name: 'charizard' },  { id: 150, name: 'mewtwo' },
+  { id: 149, name: 'dragonite' },{ id: 129, name: 'magikarp' }, { id: 58, name: 'growlithe' },
+  { id: 37, name: 'vulpix' },    { id: 92, name: 'gastly' },    { id: 131, name: 'lapras' },
+  { id: 132, name: 'ditto' },    { id: 104, name: 'cubone' },   { id: 151, name: 'mew' },
+];
+
+let selected = POKEMON[0];
+const grid = document.getElementById('pokeGrid');
+POKEMON.forEach((p, i) => {
+  const el = document.createElement('div');
+  el.className = 'poke' + (i === 0 ? ' selected' : '');
+  el.innerHTML = `<img src="${SPRITE(p.id)}" loading="lazy" alt="${p.name}"><div>${p.name}</div>`;
+  el.addEventListener('click', () => {
+    selected = p;
+    grid.querySelectorAll('.poke').forEach(x => x.classList.remove('selected'));
+    el.classList.add('selected');
+  });
+  grid.appendChild(el);
+});
+
+const map = L.map('map').setView([41.0082, 28.9784], 13); // fallback: Istanbul
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap contributors',
+}).addTo(map);
+
+navigator.geolocation?.getCurrentPosition(
+  pos => map.setView([pos.coords.latitude, pos.coords.longitude], 17),
+  () => {}
+);
+document.getElementById('locateBtn').addEventListener('click', () => {
+  navigator.geolocation?.getCurrentPosition(
+    pos => map.setView([pos.coords.latitude, pos.coords.longitude], 17),
+    () => alert('Could not get your location — allow location access for this site.')
+  );
+});
+
+// ---------- buildings ----------
+let buildings = [];
+const bldPolys = new Map();
+
+function pointInPolygon(lat, lng, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [yi, xi] = polygon[i], [yj, xj] = polygon[j];
+    if (((yi > lat) !== (yj > lat)) &&
+        (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+function addBuildingPoly(b) {
+  const poly = L.polygon(b.polygon, {
+    color: '#3b4cca', weight: 3, fillColor: '#3b4cca', fillOpacity: .22,
+  }).addTo(map);
+  poly.bindTooltip(`🏠 ${b.name} · ${b.floors}F`, { className: 'bld-tooltip', direction: 'center' });
+  bldPolys.set(b.id, poly);
+}
+
+async function loadBuildings() {
+  buildings = await (await fetch('/api/buildings')).json();
+  buildings.forEach(addBuildingPoly);
+}
+
+// ---------- placement ----------
+const markers = new Map(); // id -> Leaflet marker
+
+function addMarker(o) {
+  const icon = L.divIcon({
+    className: 'poke-marker',
+    html: `<img src="${o.sprite}" alt="${o.name}">`,
+    iconSize: [44, 44],
+    iconAnchor: [22, 40],
+  });
+  const m = L.marker([o.lat, o.lng], { icon }).addTo(map);
+  const where = o.buildingName
+    ? `🏠 ${o.buildingName}${o.floor > 0 ? ' · floor ' + o.floor : ' · ground floor'}`
+    : 'outdoors';
+  m.bindPopup(`
+    <div class="popup-name">${o.name}</div>
+    <div class="popup-sub">${where}</div>
+    <button class="popup-del" onclick="removeObject('${o.id}')">Remove</button>`);
+  markers.set(o.id, m);
+}
+
+async function removeObject(id) {
+  await fetch('/api/objects/' + id, { method: 'DELETE' });
+  markers.get(id)?.remove();
+  markers.delete(id);
+  updateCount();
+}
+
+async function place(p, lat, lng, extra = {}) {
+  const res = await fetch('/api/objects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: p.name, sprite: SPRITE(p.id), lat, lng, ...extra }),
+  });
+  const obj = await res.json();
+  addMarker(obj);
+  updateCount();
+}
+
+map.on('click', e => {
+  const { lat, lng } = e.latlng;
+  const bld = buildings.find(b => pointInPolygon(lat, lng, b.polygon));
+  if (!bld) { place(selected, lat, lng); return; }
+
+  // clicked inside a building — ask which floor
+  const opts = Array.from({ length: bld.floors }, (_, f) =>
+    `<option value="${f}">${f === 0 ? 'Ground floor' : 'Floor ' + f}</option>`).join('');
+  const div = document.createElement('div');
+  div.className = 'floor-popup';
+  div.innerHTML = `
+    <b>🏠 ${bld.name}</b><br>Hide <b style="text-transform:capitalize">${selected.name}</b> on:
+    <select>${opts}</select>
+    <button>Place here</button>`;
+  const popup = L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
+  div.querySelector('button').addEventListener('click', () => {
+    const floor = Number(div.querySelector('select').value);
+    map.closePopup(popup);
+    place(selected, lat, lng, { buildingId: bld.id, buildingName: bld.name, floor });
+  });
+});
+
+document.getElementById('scatterBtn').addEventListener('click', async () => {
+  const c = map.getCenter();
+  for (let i = 0; i < 5; i++) {
+    const p = POKEMON[Math.floor(Math.random() * POKEMON.length)];
+    // ~±90m jitter around map center
+    const lat = c.lat + (Math.random() - 0.5) * 0.0016;
+    const lng = c.lng + (Math.random() - 0.5) * 0.0016 / Math.cos(c.lat * Math.PI / 180);
+    await place(p, lat, lng);
+  }
+});
+
+function updateCount() {
+  document.getElementById('count').textContent =
+    `${markers.size} Pokémon placed · ${buildings.length} building(s) mapped`;
+}
+
+// ---------- height calibration ----------
+// Phone marks "I'm here" → we drop a spinning Snorlax there and nudge its height
+// with the buttons; the player watches it move live in AR and tells us when it
+// lines up with a known floor. Save → meters-per-floor for the whole game.
+const CALIB_SPRITE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/143.png';
+let calib = { active: false };
+let calibUserMarker = null, calibObjMarker = null;
+
+const calibStatus = document.getElementById('calibStatus');
+const calibStart = document.getElementById('calibStart');
+const calibControls = document.getElementById('calibControls');
+const calibHeightEl = document.getElementById('calibHeight');
+
+async function postCalib(patch) {
+  calib = { ...calib, ...patch };
+  await fetch('/api/calibration', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  renderCalib();
+}
+
+async function pollCalib() {
+  try { calib = await (await fetch('/api/calibration')).json(); }
+  catch { return; }
+  renderCalib();
+}
+
+function renderCalib() {
+  const hasMark = isFinite(calib.userLat) && isFinite(calib.userLng);
+  if (hasMark) {
+    const ll = [calib.userLat, calib.userLng];
+    if (!calibUserMarker) {
+      calibUserMarker = L.circleMarker(ll, { radius: 10, color: '#fff', weight: 3, fillColor: '#ff8c00', fillOpacity: 1 }).addTo(map);
+      calibUserMarker.bindTooltip('🎯 Player is here', { direction: 'top' });
+      map.setView(ll, 18);
+    } else calibUserMarker.setLatLng(ll);
+  }
+  calibStart.disabled = !hasMark;
+
+  if (calib.active) {
+    calibStatus.innerHTML = 'Object is <b>live</b> in the player\'s AR view — move it until they say it matches a floor.';
+    calibControls.hidden = false;
+    calibStart.hidden = true;
+    calibHeightEl.textContent = (Number(calib.height) || 0).toFixed(1) + ' m';
+    const ll = [calib.lat, calib.lng];
+    if (!calibObjMarker) {
+      calibObjMarker = L.marker(ll, {
+        icon: L.divIcon({ className: 'poke-marker', html: `<img src="${CALIB_SPRITE}">`, iconSize: [44, 44], iconAnchor: [22, 40] }),
+      }).addTo(map);
+      calibObjMarker.bindTooltip('Calibration object', { direction: 'top' });
+    } else calibObjMarker.setLatLng(ll);
+  } else {
+    calibControls.hidden = true;
+    calibStart.hidden = false;
+    calibStatus.innerHTML = hasMark
+      ? '🎯 Player marked their spot! Start to drop a test object there.'
+      : 'Waiting… the player taps <b>🎯 I\'m here</b> on their phone\'s map.';
+    calibObjMarker?.remove(); calibObjMarker = null;
+  }
+  document.getElementById('floorHeightInfo').textContent =
+    `Current floor height: ${(calib.floorHeight || 3).toFixed(2)} m per floor`;
+}
+
+calibStart.addEventListener('click', () => {
+  postCalib({ active: true, lat: calib.userLat, lng: calib.userLng, height: 0, sprite: CALIB_SPRITE });
+});
+
+document.getElementById('calibBtns').addEventListener('click', (e) => {
+  const d = Number(e.target.dataset?.d);
+  if (!isFinite(d)) return;
+  const h = Math.max(0, Math.round(((Number(calib.height) || 0) + d) * 10) / 10);
+  postCalib({ height: h });
+});
+
+document.getElementById('calibSave').addEventListener('click', async () => {
+  const floorN = Math.max(1, parseInt(document.getElementById('calibFloor').value, 10) || 1);
+  const fh = (Number(calib.height) || 0) / floorN;
+  if (fh <= 0.5) { alert('Height too low — raise the object to a real floor level first.'); return; }
+  await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ floorHeight: fh }),
+  });
+  calib.floorHeight = Math.round(fh * 100) / 100;
+  renderCalib();
+  alert(`Saved! 1 floor = ${calib.floorHeight} m. Every Pokémon placed on a floor now uses this height.`);
+});
+
+document.getElementById('calibEnd').addEventListener('click', () => postCalib({ active: false }));
+
+pollCalib();
+setInterval(pollCalib, 3000);
+
+(async function init() {
+  await loadBuildings();
+  const objects = await (await fetch('/api/objects')).json();
+  objects.forEach(addMarker);
+  updateCount();
+  if (objects.length) {
+    map.fitBounds(objects.map(o => [o.lat, o.lng]), { padding: [60, 60], maxZoom: 17 });
+  } else if (buildings.length) {
+    map.fitBounds(buildings.flatMap(b => b.polygon), { padding: [60, 60], maxZoom: 17 });
+  }
+})();
+</script>
+</body>
+</html>

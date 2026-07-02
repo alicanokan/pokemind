@@ -1,0 +1,7 @@
+# local self-signed HTTPS certs — regenerate per machine (see README)
+certs/
+
+.DS_Store
+node_modules/
+*.log
+.claude/

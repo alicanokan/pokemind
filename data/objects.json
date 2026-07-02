@@ -1,0 +1,111 @@
+[
+  {
+    "id": "ce31e290-5dd1-43f6-b9c4-8e1531f336b8",
+    "name": "mewtwo",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/150.png",
+    "lat": 41.05317511509875,
+    "lng": 28.988639116287235,
+    "createdAt": "2026-07-02T12:35:03.958Z"
+  },
+  {
+    "id": "f34d7841-14c6-4fd2-8d1a-0ca0051a88b1",
+    "name": "charizard",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/6.png",
+    "lat": 41.05262292801118,
+    "lng": 28.988448679447178,
+    "createdAt": "2026-07-02T12:35:44.637Z"
+  },
+  {
+    "id": "9928d80a-5d7a-4b94-89fa-4a67526ac15b",
+    "name": "growlithe",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/58.png",
+    "lat": 41.05259663327236,
+    "lng": 28.988408446311954,
+    "createdAt": "2026-07-02T12:35:48.729Z"
+  },
+  {
+    "id": "e5077d96-d59d-4c70-940a-fe5fc9075c01",
+    "name": "gastly",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/92.png",
+    "lat": 41.05259663327236,
+    "lng": 28.988322615623478,
+    "createdAt": "2026-07-02T12:35:51.829Z"
+  },
+  {
+    "id": "e16439ad-42fc-4760-b61f-f5fc4da09e26",
+    "name": "cubone",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/104.png",
+    "lat": 41.052446955328115,
+    "lng": 28.988475501537327,
+    "floor": 4,
+    "buildingId": "2510a51d-b277-4ea1-a0bc-d4a0c9fe48b5",
+    "buildingName": "Aj house",
+    "createdAt": "2026-07-02T14:09:19.003Z"
+  },
+  {
+    "id": "45a43af3-a9ae-4222-914d-d3be2128bdbb",
+    "name": "mewtwo",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/150.png",
+    "lat": 41.052546066437415,
+    "lng": 28.98847818374634,
+    "floor": 4,
+    "buildingId": "2510a51d-b277-4ea1-a0bc-d4a0c9fe48b5",
+    "buildingName": "Aj house",
+    "createdAt": "2026-07-02T15:09:07.626Z"
+  },
+  {
+    "id": "24f536e6-2ecf-4765-aa0f-7c1929fafb23",
+    "name": "jigglypuff",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/39.png",
+    "lat": 41.0527116417519,
+    "lng": 28.98779784097408,
+    "floor": 0,
+    "buildingId": null,
+    "buildingName": null,
+    "createdAt": "2026-07-02T15:09:16.766Z"
+  },
+  {
+    "id": "128dc5c1-363b-4acd-aa4d-0adccfa25288",
+    "name": "gastly",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/92.png",
+    "lat": 41.05293124486027,
+    "lng": 28.988107257855123,
+    "floor": 0,
+    "buildingId": null,
+    "buildingName": null,
+    "createdAt": "2026-07-02T15:09:16.769Z"
+  },
+  {
+    "id": "c1fa55d0-5ee9-455b-90d2-10ddc9bbbda4",
+    "name": "lapras",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/131.png",
+    "lat": 41.053212560517984,
+    "lng": 28.988737455665643,
+    "floor": 0,
+    "buildingId": null,
+    "buildingName": null,
+    "createdAt": "2026-07-02T15:09:16.772Z"
+  },
+  {
+    "id": "acd67a8c-03e8-4623-94b8-03b331405796",
+    "name": "growlithe",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/58.png",
+    "lat": 41.05276262959676,
+    "lng": 28.988940241428637,
+    "floor": 0,
+    "buildingId": null,
+    "buildingName": null,
+    "createdAt": "2026-07-02T15:09:16.774Z"
+  },
+  {
+    "id": "79f3808e-a502-404f-ae8a-23dcd2a70bf6",
+    "name": "cubone",
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/104.png",
+    "lat": 41.05193034840012,
+    "lng": 28.988908734384818,
+    "floor": 0,
+    "buildingId": null,
+    "buildingName": null,
+    "createdAt": "2026-07-02T15:09:16.777Z"
+  }
+]
