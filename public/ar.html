@@ -234,26 +234,33 @@ function buildScene() {
     updateMiniMe();
   });
 
-  // Run our OWN geolocation watch and feed fixes straight into the AR engine.
-  // AR.js's internal watcher silently stalls on some iOS versions (the mapper
-  // page gets GPS fine while the AR page sits on "Getting GPS…" forever).
-  navigator.geolocation.watchPosition((pos) => {
+  // Run our OWN geolocation watch — never depend on AR.js's internal watcher,
+  // which stalls on some iOS versions. Every fix updates the game state
+  // directly (myPos, status, map), and drives the AR camera through AR.js's
+  // documented simulate* properties: each change counts as a fresh GPS reading.
+  function onGpsFix(pos) {
     const { latitude, longitude, accuracy } = pos.coords;
     gpsAccuracy = accuracy;
-    const comp = camera.components['gps-new-camera'];
-    const loc = comp && (comp.threeLoc || comp.threeLocationBased || comp._threeLoc);
-    if (loc && typeof loc.fakeGps === 'function') {
-      // drives the camera position AND fires gps-camera-update-position above
-      loc.fakeGps(longitude, latitude);
-    } else {
-      myPos = { lat: latitude, lng: longitude };
-      refreshStatus();
-      rescaleAll();
-      updateMiniMe();
-    }
-  }, (err) => {
-    statusEl.textContent = `❌ Location error: ${err.message} — check Settings → Privacy → Location → Safari`;
-  }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+    myPos = { lat: latitude, lng: longitude };
+    try {
+      camera.setAttribute('gps-new-camera', {
+        gpsMinDistance: 1,
+        simulateLatitude: latitude,
+        simulateLongitude: longitude,
+      });
+    } catch (e) { /* AR camera not ready yet — game UI still works */ }
+    refreshStatus();
+    rescaleAll();
+    updateMiniMe();
+  }
+  function onGpsError(err) {
+    statusEl.textContent = `❌ Location error: ${err.message} — check Settings → Privacy → Location Services → Safari Websites`;
+  }
+  // one-shot first (fast, may return a cached fix), then continuous updates
+  navigator.geolocation.getCurrentPosition(onGpsFix, onGpsError,
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 });
+  navigator.geolocation.watchPosition(onGpsFix, onGpsError,
+    { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
 
   scene.addEventListener('loaded', () => {
     loadBuildings();

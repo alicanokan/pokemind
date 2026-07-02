@@ -61,8 +61,12 @@
 <script>
   const QR = 'https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=';
   fetch('/api/info').then(r => r.json()).then(info => {
-    const play = info.lanUrl + '/ar.html';
-    const house = info.lanUrl + '/mapper.html';
+    // opened through a public tunnel? then QRs should use that address,
+    // so phones work from anywhere (4G included), not just home Wi-Fi
+    const isLocal = /^(localhost|127\.|192\.168\.|10\.|172\.)/.test(location.hostname);
+    const base = isLocal ? info.lanUrl : location.origin;
+    const play = base + '/ar.html';
+    const house = base + '/mapper.html';
     document.getElementById('qrPlay').src = QR + encodeURIComponent(play);
     document.getElementById('qrHouse').src = QR + encodeURIComponent(house);
     document.getElementById('urlPlay').textContent = play;
