@@ -40,9 +40,9 @@
   <p class="tag">Map your house, place Pokémon on the real-world map (even inside buildings, on any floor!),
   then walk around and catch them in AR through your phone camera.</p>
   <div class="buttons">
-    <a class="btn play" href="/ar.html">📱 Play AR</a>
-    <a class="btn house" href="/mapper.html">🏠 Map My House</a>
-    <a class="btn admin" href="/admin.html">🗺️ Admin Map</a>
+    <a class="btn play" href="ar.html">📱 Play AR</a>
+    <a class="btn house" href="mapper.html">🏠 Map My House</a>
+    <a class="btn admin" href="admin.html">🗺️ Admin Map</a>
   </div>
   <div class="qrs" id="qrs" hidden>
     <div class="qr">
@@ -58,13 +58,15 @@
   </div>
   <p class="hint">Scan with your phone (same Wi-Fi). Allow <b>camera</b>, <b>location</b> and <b>motion</b> access.
   If the browser warns about the certificate, tap <i>Show details → Visit website</i> (it's your own local server).</p>
+<script src="api.js"></script>
 <script>
   const QR = 'https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=';
   fetch('/api/info').then(r => r.json()).then(info => {
-    // opened through a public tunnel? then QRs should use that address,
-    // so phones work from anywhere (4G included), not just home Wi-Fi
+    // on public hosting, QRs use this page's own address (subpath-safe);
+    // on the local dev server they use the Mac's LAN HTTPS address
     const isLocal = /^(localhost|127\.|192\.168\.|10\.|172\.)/.test(location.hostname);
-    const base = isLocal ? info.lanUrl : location.origin;
+    const dir = new URL('.', location.href).href.replace(/\/$/, '');
+    const base = isLocal ? info.lanUrl : dir;
     const play = base + '/ar.html';
     const house = base + '/mapper.html';
     document.getElementById('qrPlay').src = QR + encodeURIComponent(play);
