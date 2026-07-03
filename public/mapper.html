@@ -116,15 +116,15 @@
 
 <!-- mode chooser -->
 <div id="chooser">
-  <h1>🏠 Map My House</h1>
-  <p>Teach PokeMind where your house is, so Pokémon can hide inside it — on any floor.</p>
+  <h1 id="chooserTitle">🏠 Map My House</h1>
+  <p id="chooserText">Teach PokeMind where your house is, so Pokémon can hide inside it — on any floor.</p>
   <button id="scanChoice">📷 Scan by walking around
     <small>Opens your camera. Walk around your house and tap "Mark corner" at each corner — your GPS traces the shape. Fine-tune it at the end.</small>
   </button>
   <button id="drawChoice">✏️ Draw on the map
     <small>Trace your roof outline on satellite view by tapping its corners.</small>
   </button>
-  <a href="index.html">← Back to home</a>
+  <a href="index.html" id="chooserBack">← Back to home</a>
 </div>
 
 <!-- camera scan -->
@@ -154,14 +154,24 @@
 
 <div id="saveModal">
   <div class="card">
-    <h2>🏠 Save your building</h2>
+    <h2 id="saveTitle">🏠 Save your building</h2>
     <div>
-      <label for="bName">Building name</label>
+      <label for="bName" id="bNameLabel">Building name</label>
       <input id="bName" placeholder="e.g. Alican's home" maxlength="60">
     </div>
-    <div>
+    <div id="floorsField">
       <label for="bFloors">How many floors? (including ground)</label>
       <input id="bFloors" type="number" min="1" max="100" value="2" inputmode="numeric">
+    </div>
+    <div id="trainerField" hidden>
+      <label for="bTrainer">Your trainer name (this space becomes yours)</label>
+      <input id="bTrainer" placeholder="e.g. Alican" maxlength="40">
+    </div>
+    <div id="wifiFields" hidden>
+      <label for="bSsid">WiFi name (optional — guests scanning your home QR can join)</label>
+      <input id="bSsid" placeholder="e.g. HomeWiFi" maxlength="64">
+      <label for="bPass" style="margin-top:8px">WiFi password (optional)</label>
+      <input id="bPass" placeholder="leave empty for open network" maxlength="64">
     </div>
     <div class="row">
       <button id="modalCancel" style="background:#eee;color:#444">Back</button>
@@ -171,6 +181,23 @@
 </div>
 
 <script>
+// ================= mode: buildings (default) or claim-a-space =================
+const SPACE_MODE = new URLSearchParams(location.search).get('claim') === 'space';
+if (SPACE_MODE) {
+  document.title = 'PokeMind — Claim My Space';
+  document.getElementById('chooserTitle').textContent = '🚩 Claim My Space';
+  document.getElementById('chooserText').textContent =
+    'Mark your territory! Walk around your home (or draw it on the map) to claim it as YOUR space — then fill it with Pokémon as AR artworks.';
+  document.getElementById('chooserBack').href = 'spaces.html';
+  document.getElementById('chooserBack').textContent = '← Back to my spaces';
+  document.getElementById('saveTitle').textContent = '🚩 Claim this space';
+  document.getElementById('bNameLabel').textContent = 'Space name';
+  document.getElementById('bName').placeholder = "e.g. Alican's living room";
+  document.getElementById('floorsField').hidden = true;
+  document.getElementById('wifiFields').hidden = false;
+  document.getElementById('modalSave').textContent = 'Claim 🚩';
+}
+
 // ================= shared map =================
 const map = L.map('map', { zoomControl: false }).setView([41.0082, 28.9784], 13);
 const streets = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OSM' });
@@ -216,6 +243,14 @@ async function removeBuilding(id) {
   drawn.delete(id);
 }
 fetch('/api/buildings').then(r => r.json()).then(list => list.forEach(addBuilding));
+
+// existing claimed spaces (shown in both modes so territory is visible)
+function addSpacePoly(s) {
+  if (!s.polygon || s.polygon.length < 3) return;
+  const poly = L.polygon(s.polygon, { color: '#2ecc71', weight: 3, fillColor: '#2ecc71', fillOpacity: .18, dashArray: '6 6' }).addTo(map);
+  poly.bindTooltip(`🚩 ${s.name} · ${s.ownerName || 'unclaimed'}`, { className: 'bld-tooltip', direction: 'center' });
+}
+fetch('/api/spaces').then(r => r.json()).then(list => list.forEach(addSpacePoly)).catch(() => {});
 
 // ================= modes =================
 const chooser = document.getElementById('chooser');
@@ -404,10 +439,48 @@ document.getElementById('cancelBtn').addEventListener('click', exitEdit);
 const modal = document.getElementById('saveModal');
 document.getElementById('saveBtn').addEventListener('click', () => {
   if (points.length < 3) { topBar.innerHTML = '❗ Need at least 3 corners — keep tapping!'; return; }
+  if (SPACE_MODE) {
+    const known = PokeID.get();
+    document.getElementById('trainerField').hidden = !!known;
+    if (known) document.getElementById('bTrainer').value = known.name;
+  }
   modal.classList.add('open');
 });
 document.getElementById('modalCancel').addEventListener('click', () => modal.classList.remove('open'));
+
+function polyCenter(pts) {
+  const lat = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+  const lng = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+  return { lat, lng };
+}
+
 document.getElementById('modalSave').addEventListener('click', async () => {
+  if (SPACE_MODE) {
+    const trainerName = document.getElementById('bTrainer').value.trim();
+    const player = await PokeID.ensure(trainerName || undefined);
+    const name = document.getElementById('bName').value.trim() || `${player.name}'s space`;
+    const { lat, lng } = polyCenter(points);
+    const res = await fetch('/api/spaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name, polygon: points, lat, lng,
+        ownerId: player.id, ownerName: player.name,
+        wifiSsid: document.getElementById('bSsid').value.trim(),
+        wifiPass: document.getElementById('bPass').value.trim(),
+      }),
+    });
+    const space = await res.json();
+    modal.classList.remove('open');
+    addSpacePoly(space);
+    exitEdit();
+    chooser.hidden = true;
+    topBar.hidden = false;
+    topBar.innerHTML = `🎉 <b>"${space.name}"</b> is now YOUR space, ${space.ownerName}!<br>` +
+      `<a href="ar.html?space=${space.id}" style="color:#ffcb05">📷 Decorate it in AR</a> · ` +
+      `<a href="spaces.html" style="color:#ffcb05">📱 Get its home QR</a>`;
+    return;
+  }
   const name = document.getElementById('bName').value.trim() || 'My house';
   const floors = Math.max(1, parseInt(document.getElementById('bFloors').value, 10) || 1);
   const res = await fetch('/api/buildings', {
