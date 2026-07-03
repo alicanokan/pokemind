@@ -225,15 +225,16 @@ document.getElementById('locateBtn').addEventListener('click', () => {
 });
 navigator.geolocation?.getCurrentPosition(pos => {
   showMe(pos.coords.latitude, pos.coords.longitude);
-  map.setView([pos.coords.latitude, pos.coords.longitude], 18);
+  // iOS can grant this many seconds late — don't yank the view mid-drawing
+  if (mode === 'chooser') map.setView([pos.coords.latitude, pos.coords.longitude], 18);
 });
 
 // existing buildings
 const drawn = new Map();
 function addBuilding(b) {
   const poly = L.polygon(b.polygon, { color: '#3b4cca', weight: 3, fillColor: '#3b4cca', fillOpacity: .25 }).addTo(map);
-  poly.bindTooltip(`🏠 ${b.name} · ${b.floors}F`, { className: 'bld-tooltip', direction: 'center' });
-  poly.bindPopup(`<b>🏠 ${b.name}</b><br>${b.floors} floor(s)<br><br>
+  poly.bindTooltip(`🏠 ${escHtml(b.name)} · ${b.floors}F`, { className: 'bld-tooltip', direction: 'center' });
+  poly.bindPopup(`<b>🏠 ${escHtml(b.name)}</b><br>${b.floors} floor(s)<br><br>
     <button class="popup-del" onclick="removeBuilding('${b.id}')">Delete building</button>`);
   drawn.set(b.id, poly);
 }
@@ -242,15 +243,15 @@ async function removeBuilding(id) {
   drawn.get(id)?.remove();
   drawn.delete(id);
 }
-fetch('/api/buildings').then(r => r.json()).then(list => list.forEach(addBuilding));
+fetch('/api/buildings').then(r => r.json()).then(list => Array.isArray(list) && list.forEach(addBuilding)).catch(() => {});
 
 // existing claimed spaces (shown in both modes so territory is visible)
 function addSpacePoly(s) {
   if (!s.polygon || s.polygon.length < 3) return;
   const poly = L.polygon(s.polygon, { color: '#2ecc71', weight: 3, fillColor: '#2ecc71', fillOpacity: .18, dashArray: '6 6' }).addTo(map);
-  poly.bindTooltip(`🚩 ${s.name} · ${s.ownerName || 'unclaimed'}`, { className: 'bld-tooltip', direction: 'center' });
+  poly.bindTooltip(`🚩 ${escHtml(s.name)} · ${escHtml(s.ownerName || 'unclaimed')}`, { className: 'bld-tooltip', direction: 'center' });
 }
-fetch('/api/spaces').then(r => r.json()).then(list => list.forEach(addSpacePoly)).catch(() => {});
+fetch('/api/spaces').then(r => r.json()).then(list => Array.isArray(list) && list.forEach(addSpacePoly)).catch(() => {});
 
 // ================= modes =================
 const chooser = document.getElementById('chooser');
@@ -471,12 +472,13 @@ document.getElementById('modalSave').addEventListener('click', async () => {
       }),
     });
     const space = await res.json();
+    if (!res.ok || space.error || !space.id) { topBar.hidden = false; topBar.innerHTML = '❗ Could not save your space — check your connection and try ✅ Save again.'; modal.classList.remove('open'); return; }
     modal.classList.remove('open');
     addSpacePoly(space);
     exitEdit();
     chooser.hidden = true;
     topBar.hidden = false;
-    topBar.innerHTML = `🎉 <b>"${space.name}"</b> is now YOUR space, ${space.ownerName}!<br>` +
+    topBar.innerHTML = `🎉 <b>"${escHtml(space.name)}"</b> is now YOUR space, ${escHtml(space.ownerName)}!<br>` +
       `<a href="ar.html?space=${space.id}" style="color:#ffcb05">📷 Decorate it in AR</a> · ` +
       `<a href="spaces.html" style="color:#ffcb05">📱 Get its home QR</a>`;
     return;
@@ -489,12 +491,13 @@ document.getElementById('modalSave').addEventListener('click', async () => {
     body: JSON.stringify({ name, floors, polygon: points }),
   });
   const bld = await res.json();
+  if (!res.ok || bld.error || !bld.id) { topBar.hidden = false; topBar.innerHTML = '❗ Could not save the building — check your connection and try ✅ Save again.'; modal.classList.remove('open'); return; }
   modal.classList.remove('open');
   addBuilding(bld);
   exitEdit();
   chooser.hidden = true;
   topBar.hidden = false;
-  topBar.innerHTML = `🎉 <b>"${bld.name}"</b> saved with ${bld.floors} floor(s)!<br>` +
+  topBar.innerHTML = `🎉 <b>"${escHtml(bld.name)}"</b> saved with ${bld.floors} floor(s)!<br>` +
     `Admin can now hide Pokémon inside. <a href="index.html" style="color:#ffcb05">← home</a> · ` +
     `<a href="#" style="color:#ffcb05" onclick="location.reload();return false">map another</a>`;
 });

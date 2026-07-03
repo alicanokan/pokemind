@@ -208,6 +208,10 @@
     }
   };
 
+  // escape user-supplied strings before they touch innerHTML anywhere
+  window.escHtml = (t) => String(t ?? '').replace(/[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
   // ---- trainer identity (name + device id, no passwords) ----
   // PokeID.get() -> {id, name} | null      PokeID.ensure(name) -> {id, name}
   const ID_KEY = 'pokemind_player';
