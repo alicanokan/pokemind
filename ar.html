@@ -164,8 +164,13 @@
 <div class="hud" id="toast"></div>
 
 <div id="pickerPanel">
-  <h2>➕ Drop a Pokémon here</h2>
-  <p>It will appear a few steps <b>in front of you</b> and stay there — reopen the game and it's still waiting. Everyone can see and catch it!</p>
+  <h2 id="pickerTitle">➕ Drop a Pokémon here</h2>
+  <p id="pickerText">It will appear a few steps <b>in front of you</b> and stay there — reopen the game and it's still waiting. Everyone can see and catch it!</p>
+  <div id="pickerName" hidden style="margin-bottom:14px">
+    <label for="trainerInput" style="font-size:.85rem;display:block;margin-bottom:6px">Your trainer name (signed on your artworks):</label>
+    <input id="trainerInput" maxlength="40" placeholder="e.g. Alican"
+      style="width:100%;max-width:320px;padding:12px;font-size:1rem;border-radius:10px;border:none">
+  </div>
   <div id="pickerGrid"></div>
   <button id="closePicker">Cancel</button>
 </div>
@@ -198,6 +203,10 @@ const dexPanel = document.getElementById('pokedexPanel');
 let floorHeight = 3;      // meters per floor in AR — calibrated live from /api/calibration
 const CATCH_RADIUS = 40;  // meters — get this close to catch
 
+// space mode: ?space=<id> — visiting a claimed home, Pokémon are AR artworks
+const SPACE_ID = new URLSearchParams(location.search).get('space');
+let space = null;         // fetched space record when in space mode
+
 let myPos = null;                 // {lat, lng}
 let gpsAccuracy = null;           // meters, from our own watchPosition
 let posLocked = false;            // true after "I'm here" pin — GPS updates paused
@@ -227,6 +236,23 @@ function distMeters(a, b) {
 function floorLabel(o) {
   if (!o.buildingName) return '';
   return o.floor > 0 ? ` (🏠 ${o.buildingName}, floor ${o.floor})` : ` (🏠 ${o.buildingName})`;
+}
+
+// in space mode, brand the start screen with the space's name before starting
+if (SPACE_ID) {
+  document.getElementById('dropBtn').textContent = '🎨 Place';
+  fetch('/api/spaces/' + SPACE_ID).then(r => r.json()).then(s => {
+    if (s && !s.error) {
+      space = s;
+      const h1 = document.querySelector('#startOverlay h1');
+      const p = document.querySelector('#startOverlay p');
+      if (h1) h1.textContent = `🏠 ${s.name}`;
+      if (p) p.innerHTML = `Welcome to <b>${s.ownerName || 'a trainer'}</b>'s space! ` +
+        `Pokémon here are <b>AR artworks</b> — look around with your camera to find them, or place your own with <b>🎨 Place</b>.`;
+      drawMiniSpace(); // no-op unless the mini map already exists
+      refreshStatus();
+    }
+  }).catch(() => {});
 }
 
 document.getElementById('startBtn').addEventListener('click', async () => {
@@ -367,7 +393,7 @@ async function loadBuildings() {
 
 async function loadObjects() {
   let objects;
-  try { objects = await (await fetch('/api/objects')).json(); }
+  try { objects = await (await fetch(SPACE_ID ? '/api/objects?space=' + SPACE_ID : '/api/objects')).json(); }
   catch { return; }
 
   const alive = new Set();
@@ -447,6 +473,11 @@ function positionAll() {
 function tryCatch(o) {
   const p = placed.get(o.id);
   if (!p) return;
+  if (o.kind === 'artwork') {
+    const mine = PokeID.get()?.id === o.ownerId;
+    showToast(`🎨 ${cap(o.name)} — artwork by ${mine ? 'you' : (o.ownerName || 'a trainer')}${mine ? ' (remove it from the 🗺️ map)' : ''}`, 2600);
+    return;
+  }
   const d = myPos ? distMeters(myPos, o) : Infinity;
   if (d > CATCH_RADIUS) {
     showToast(`${cap(o.name)} is ${Math.round(d)}m away — get closer!`);
@@ -485,6 +516,12 @@ function refreshStatus() {
   for (const p of placed.values()) {
     const d = distMeters(myPos, p.o);
     if (d < nd) { nd = d; nearest = p.o; }
+  }
+  if (SPACE_ID) {
+    statusEl.textContent = nearest
+      ? `${acc}🏠 ${space?.name || 'space'} · ${placed.size} artwork${placed.size === 1 ? '' : 's'} · ${cap(nearest.name)} — ${Math.round(nd)}m`
+      : `${acc}🏠 ${space?.name || 'space'} · no artworks yet — place one with 🎨!`;
+    return;
   }
   statusEl.textContent = nearest
     ? `${acc}${placed.size} wild · ${cap(nearest.name)}${floorLabel(nearest)} — ${Math.round(nd)}m ${nd <= CATCH_RADIUS ? '· TAP IT! 🎯' : ''}`
@@ -528,6 +565,7 @@ function initMiniMap() {
   miniMap.on('dragstart', () => { followMe = false; });
   miniMap.on('click', onMiniMapClick);
   drawMiniBuildings();
+  drawMiniSpace();
   drawMiniPokes();
   updateMiniMe();
 }
@@ -594,6 +632,7 @@ document.getElementById('unlockBtn').addEventListener('click', () => {
 function centerOnBest() {
   if (!miniMap) return;
   if (myPos) { miniMap.setView([myPos.lat, myPos.lng], 18); return; }
+  if (space && isFinite(space.lat)) { miniMap.setView([space.lat, space.lng], 19); return; }
   const pts = [...placed.values()].map(p => [p.o.lat, p.o.lng]);
   if (pts.length) miniMap.fitBounds(pts, { padding: [50, 50], maxZoom: 18 });
 }
@@ -623,9 +662,38 @@ function drawMiniPokes() {
       iconSize: [38, 38], iconAnchor: [19, 34],
     });
     const m = L.marker([p.o.lat, p.o.lng], { icon }).addTo(miniMap);
-    m.bindTooltip(`${cap(p.o.name)}${floorLabel(p.o)}`, { direction: 'top' });
+    if (p.o.kind === 'artwork' && PokeID.get()?.id === p.o.ownerId) {
+      // your own artwork — popup with a remove button
+      const div = document.createElement('div');
+      div.innerHTML = `<b style="text-transform:capitalize">🎨 ${p.o.name}</b> (yours)<br>`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Remove artwork';
+      btn.style.cssText = 'margin-top:6px;background:#ee1515;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-weight:700';
+      btn.addEventListener('click', async () => {
+        await fetch('/api/objects/' + p.o.id, { method: 'DELETE' });
+        p.root.remove(); placed.delete(p.o.id);
+        miniPoke.get(p.o.id)?.remove(); miniPoke.delete(p.o.id);
+        miniMap.closePopup();
+        refreshStatus();
+        showToast('Artwork removed 🗑️');
+      });
+      div.appendChild(btn);
+      m.bindPopup(div);
+    } else {
+      const by = p.o.kind === 'artwork' ? ` · by ${p.o.ownerName || '?'}` : '';
+      m.bindTooltip(`${cap(p.o.name)}${floorLabel(p.o)}${by}`, { direction: 'top' });
+    }
     miniPoke.set(p.o.id, m);
   }
+}
+
+let miniSpaceLayer = null;
+function drawMiniSpace() {
+  if (!miniMap || !space?.polygon || miniSpaceLayer) return;
+  miniSpaceLayer = L.polygon(space.polygon, {
+    color: '#2ecc71', weight: 3, fillColor: '#2ecc71', fillOpacity: .12, dashArray: '6 6',
+  }).addTo(miniMap);
+  miniSpaceLayer.bindTooltip(`🏠 ${space.name}`, { direction: 'center' });
 }
 
 function drawMiniBuildings() {
@@ -651,11 +719,28 @@ const DROPPABLE = [
 ];
 const pickerPanel = document.getElementById('pickerPanel');
 const pickerGrid = document.getElementById('pickerGrid');
+if (SPACE_ID) {
+  document.getElementById('pickerTitle').textContent = '🎨 Place an artwork';
+  document.getElementById('pickerText').innerHTML =
+    'It becomes part of this space — friends who visit (or scan the home QR) will see it in AR, signed with your name.';
+}
 DROPPABLE.forEach(p => {
   const el = document.createElement('div');
   el.className = 'pick';
   el.innerHTML = `<img src="${SPRITE(p.id)}" loading="lazy" alt="${p.name}"><div>${p.name}</div>`;
-  el.addEventListener('click', () => { pickerPanel.classList.remove('open'); startPlacing(p); });
+  el.addEventListener('click', async () => {
+    if (SPACE_ID && !PokeID.get()) {
+      const name = document.getElementById('trainerInput').value.trim();
+      if (!name) {
+        document.getElementById('trainerInput').focus();
+        showToast('Tell us your trainer name first! 👤');
+        return;
+      }
+      await PokeID.ensure(name);
+    }
+    pickerPanel.classList.remove('open');
+    startPlacing(p);
+  });
   pickerGrid.appendChild(el);
 });
 
@@ -725,6 +810,7 @@ quickDrop.addEventListener('click', async () => {
 });
 
 document.getElementById('dropBtn').addEventListener('click', () => {
+  if (SPACE_ID) document.getElementById('pickerName').hidden = !!PokeID.get();
   pickerPanel.classList.add('open');
 });
 document.getElementById('closePicker').addEventListener('click', () => pickerPanel.classList.remove('open'));
@@ -749,11 +835,20 @@ function posInFrontOfMe(distM) {
 
 async function dropAt(p, lat, lng, message) {
   let obj;
+  const body = { name: p.name, sprite: SPRITE(p.id), lat, lng };
+  if (SPACE_ID) {
+    const player = PokeID.get();
+    Object.assign(body, {
+      spaceId: SPACE_ID, kind: 'artwork',
+      ownerId: player?.id, ownerName: player?.name,
+    });
+    message = `🎨 ${cap(p.name)} is now part of this space — signed ${player?.name}!`;
+  }
   try {
     const res = await fetch('/api/objects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: p.name, sprite: SPRITE(p.id), lat, lng }),
+      body: JSON.stringify(body),
     });
     obj = await res.json();
   } catch { showToast('Could not reach the server 😕'); return; }

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokeMind — My Spaces</title>
+<script src="api.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; min-height: 100vh;
+    background: linear-gradient(160deg, #2a75bb 0%, #3b4cca 100%); color: #fff;
+    padding: 24px 16px 48px; display: flex; flex-direction: column; align-items: center; gap: 18px;
+  }
+  header { text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  h1 { color: #ffcb05; text-shadow: 2px 2px 0 rgba(0,0,0,.35); font-size: 1.9rem; }
+  header p { opacity: .9; max-width: 480px; line-height: 1.5; font-size: .95rem; }
+  #trainerBadge {
+    background: rgba(0,0,0,.25); border: 2px solid rgba(255,255,255,.4); color: #fff;
+    border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: .9rem; cursor: pointer;
+  }
+  #trainerBadge b { color: #ffcb05; }
+  .btn {
+    display: inline-block; border: none; cursor: pointer; text-decoration: none; text-align: center;
+    padding: 14px 24px; border-radius: 999px; font-size: 1rem; font-weight: 700; transition: transform .15s;
+  }
+  .btn:active { transform: scale(.96); }
+  .yellow { background: #ffcb05; color: #2a75bb; box-shadow: 0 5px 0 #c7a008; }
+  .green { background: #2ecc71; color: #fff; box-shadow: 0 5px 0 #1e8f4e; }
+  .small { padding: 10px 14px; font-size: .85rem; box-shadow: none; }
+  .white { background: #fff; color: #3b4cca; }
+  .red { background: #ee1515; color: #fff; }
+  .ghost { background: rgba(255,255,255,.15); color: #fff; border: 2px solid rgba(255,255,255,.35); }
+
+  #list { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 520px; }
+  .card {
+    background: #fff; color: #333; border-radius: 18px; padding: 16px;
+    display: flex; flex-direction: column; gap: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.25);
+  }
+  .card h3 { color: #2a75bb; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mine-tag { background: #ffcb05; color: #2a75bb; font-size: .68rem; border-radius: 999px; padding: 3px 10px; }
+  .card .sub { font-size: .82rem; color: #777; }
+  .card .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .empty { text-align: center; opacity: .85; line-height: 1.6; max-width: 420px; }
+  a.back { color: #ffcb05; font-size: .9rem; }
+
+  .modal { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.7);
+    display: none; align-items: center; justify-content: center; padding: 20px; }
+  .modal.open { display: flex; }
+  .modal .box {
+    background: #fff; color: #333; border-radius: 20px; padding: 24px; width: 100%; max-width: 380px;
+    display: flex; flex-direction: column; gap: 14px; text-align: center; max-height: 90vh; overflow-y: auto;
+  }
+  .modal h2 { color: #2a75bb; font-size: 1.2rem; }
+  .modal img.qr { width: 220px; height: 220px; margin: 0 auto; border-radius: 8px; }
+  .modal .qr-note { font-size: .82rem; color: #666; line-height: 1.5; }
+  .modal input {
+    width: 100%; padding: 12px; font-size: 1rem; border: 2px solid #ccc; border-radius: 10px;
+  }
+  .modal label { font-size: .82rem; font-weight: 600; color: #444; text-align: left; display: block; margin-bottom: 4px; }
+  .wifi-box { background: #f2f6ff; border-radius: 12px; padding: 12px; font-size: .85rem; color: #333; }
+  .wifi-box b { color: #2a75bb; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏠 My Spaces</h1>
+  <p>Claim your home or favourite spot as a PokeMind space, decorate it with Pokémon as AR artworks, and share a home QR so friends can see them.</p>
+  <button id="trainerBadge">👤 Trainer: <b id="trainerName">…</b> ✏️</button>
+</header>
+
+<a class="btn yellow" href="mapper.html?claim=space">➕ Claim a new space</a>
+
+<div id="list"><p class="empty">Loading spaces…</p></div>
+
+<a class="back" href="index.html">← Back to home</a>
+
+<!-- trainer name modal -->
+<div class="modal" id="nameModal">
+  <div class="box">
+    <h2>👤 Who are you, trainer?</h2>
+    <div>
+      <label for="nameInput">Your trainer name (shown on your spaces & artworks)</label>
+      <input id="nameInput" maxlength="40" placeholder="e.g. Alican">
+    </div>
+    <button class="btn green" id="nameSave">Save</button>
+  </div>
+</div>
+
+<!-- home QR modal -->
+<div class="modal" id="qrModal">
+  <div class="box">
+    <h2 id="qrTitle">📱 Home QR</h2>
+    <img class="qr" id="qrImg" alt="QR code that opens this space in AR">
+    <div class="qr-note">Print it or stick it on the fridge — friends scan it with their phone camera and land straight in your space's AR view.</div>
+    <div id="wifiSection" hidden>
+      <div class="wifi-box">📶 WiFi: <b id="wifiName"></b> · password: <b id="wifiPw"></b></div>
+      <img class="qr" id="wifiQrImg" alt="QR code that joins the WiFi" style="margin-top:10px">
+      <div class="qr-note">Guests scan this second QR with their camera to hop onto your WiFi first.</div>
+    </div>
+    <button class="btn white small" id="qrClose">Close</button>
+  </div>
+</div>
+
+<!-- edit space modal -->
+<div class="modal" id="editModal">
+  <div class="box">
+    <h2>⚙️ Edit space</h2>
+    <div>
+      <label for="editName">Space name</label>
+      <input id="editName" maxlength="60">
+    </div>
+    <div>
+      <label for="editSsid">WiFi network name (optional — shown to guests)</label>
+      <input id="editSsid" maxlength="64" placeholder="e.g. HomeWiFi">
+    </div>
+    <div>
+      <label for="editPass">WiFi password (optional)</label>
+      <input id="editPass" maxlength="64" placeholder="leave empty for open network">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn ghost small" id="editCancel" style="flex:1;color:#666;border-color:#ccc">Cancel</button>
+      <button class="btn green small" id="editSave" style="flex:1">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const QR = (data) => 'https://api.qrserver.com/v1/create-qr-code/?size=440x440&data=' + encodeURIComponent(data);
+const listEl = document.getElementById('list');
+let spaces = [];
+
+function me() { return PokeID.get(); }
+
+function renderTrainer() {
+  document.getElementById('trainerName').textContent = me()?.name || 'tap to set';
+}
+document.getElementById('trainerBadge').addEventListener('click', () => {
+  document.getElementById('nameInput').value = me()?.name || '';
+  document.getElementById('nameModal').classList.add('open');
+});
+document.getElementById('nameSave').addEventListener('click', async () => {
+  const name = document.getElementById('nameInput').value.trim();
+  if (!name) return;
+  await PokeID.ensure(name);
+  document.getElementById('nameModal').classList.remove('open');
+  renderTrainer();
+  render(); // "yours" tags may change
+});
+
+function spaceUrl(s) {
+  return new URL('ar.html?space=' + s.id, location.href).href;
+}
+
+// WIFI:T:WPA;S:ssid;P:pass;; — escape \ ; , : "
+const wifiEsc = (v) => String(v).replace(/([\\;,:"])/g, '\\$1');
+function wifiQrString(s) {
+  return s.wifiPass
+    ? `WIFI:T:WPA;S:${wifiEsc(s.wifiSsid)};P:${wifiEsc(s.wifiPass)};;`
+    : `WIFI:T:nopass;S:${wifiEsc(s.wifiSsid)};;`;
+}
+
+function render() {
+  const my = me();
+  if (!spaces.length) {
+    listEl.innerHTML = '<p class="empty">No spaces claimed yet.<br>Tap <b>➕ Claim a new space</b>, walk around your home (or draw it on the map), and it becomes yours!</p>';
+    return;
+  }
+  listEl.innerHTML = '';
+  const mine = spaces.filter(s => my && s.ownerId === my.id);
+  const others = spaces.filter(s => !my || s.ownerId !== my.id);
+  for (const s of [...mine, ...others]) {
+    const isMine = my && s.ownerId === my.id;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <h3>🏠 ${esc(s.name)} ${isMine ? '<span class="mine-tag">YOUR SPACE</span>' : ''}</h3>
+      <div class="sub">by ${esc(s.ownerName || 'unknown trainer')}${s.wifiSsid ? ' · 📶 WiFi shared' : ''}</div>
+      <div class="row">
+        <a class="btn green small" href="ar.html?space=${s.id}">📷 Open in AR</a>
+        <button class="btn yellow small" data-qr="${s.id}">📱 Home QR</button>
+        ${isMine ? `<button class="btn white small" data-edit="${s.id}">⚙️ Edit</button>
+        <button class="btn red small" data-del="${s.id}">🗑️</button>` : ''}
+      </div>`;
+    listEl.appendChild(card);
+  }
+}
+
+function esc(t) { return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+listEl.addEventListener('click', async (e) => {
+  const qrId = e.target.dataset?.qr, editId = e.target.dataset?.edit, delId = e.target.dataset?.del;
+  if (qrId) openQr(spaces.find(s => s.id === qrId));
+  if (editId) openEdit(spaces.find(s => s.id === editId));
+  if (delId) {
+    const s = spaces.find(x => x.id === delId);
+    if (!confirm(`Delete "${s.name}" and all its AR artworks? This can't be undone.`)) return;
+    await fetch('/api/spaces/' + delId, { method: 'DELETE' });
+    spaces = spaces.filter(x => x.id !== delId);
+    render();
+  }
+});
+
+function openQr(s) {
+  document.getElementById('qrTitle').textContent = `📱 ${s.name}`;
+  document.getElementById('qrImg').src = QR(spaceUrl(s));
+  const wifi = document.getElementById('wifiSection');
+  if (s.wifiSsid) {
+    wifi.hidden = false;
+    document.getElementById('wifiName').textContent = s.wifiSsid;
+    document.getElementById('wifiPw').textContent = s.wifiPass || '(open network)';
+    document.getElementById('wifiQrImg').src = QR(wifiQrString(s));
+  } else wifi.hidden = true;
+  document.getElementById('qrModal').classList.add('open');
+}
+document.getElementById('qrClose').addEventListener('click', () => document.getElementById('qrModal').classList.remove('open'));
+
+let editing = null;
+function openEdit(s) {
+  editing = s;
+  document.getElementById('editName').value = s.name;
+  document.getElementById('editSsid').value = s.wifiSsid || '';
+  document.getElementById('editPass').value = s.wifiPass || '';
+  document.getElementById('editModal').classList.add('open');
+}
+document.getElementById('editCancel').addEventListener('click', () => document.getElementById('editModal').classList.remove('open'));
+document.getElementById('editSave').addEventListener('click', async () => {
+  const patch = {
+    name: document.getElementById('editName').value.trim() || 'My space',
+    wifiSsid: document.getElementById('editSsid').value.trim(),
+    wifiPass: document.getElementById('editPass').value.trim(),
+  };
+  const r = await fetch('/api/spaces/' + editing.id, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  const updated = await r.json();
+  spaces = spaces.map(s => s.id === updated.id ? updated : s);
+  document.getElementById('editModal').classList.remove('open');
+  render();
+});
+
+(async function init() {
+  renderTrainer();
+  if (!me()) document.getElementById('nameModal').classList.add('open'); // first visit: introduce yourself
+  try { spaces = await (await fetch('/api/spaces')).json(); }
+  catch { listEl.innerHTML = '<p class="empty">Could not load spaces 😕 — check your connection.</p>'; return; }
+  render();
+})();
+</script>
+</body>
+</html>

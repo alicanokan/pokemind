@@ -14,10 +14,16 @@
   const rowToObj = (r) => ({
     id: r.id, name: r.name, sprite: r.sprite, lat: r.lat, lng: r.lng,
     floor: r.floor || 0, buildingId: r.building_id, buildingName: r.building_name,
-    createdAt: r.created_at,
+    spaceId: r.space_id, ownerId: r.owner_id, ownerName: r.owner_name,
+    kind: r.kind || 'wild', createdAt: r.created_at,
   });
   const rowToBld = (r) => ({
     id: r.id, name: r.name, floors: r.floors, polygon: r.polygon, createdAt: r.created_at,
+  });
+  const rowToSpace = (r) => ({
+    id: r.id, name: r.name, ownerId: r.owner_id, ownerName: r.owner_name,
+    polygon: r.polygon, lat: r.lat, lng: r.lng,
+    wifiSsid: r.wifi_ssid, wifiPass: r.wifi_pass, createdAt: r.created_at,
   });
 
   async function getState(key) {
@@ -43,8 +49,15 @@
 
     try {
       // ---- objects ----
+      // /api/objects            -> wild world objects (no space)
+      // /api/objects?space=ID   -> that space's artworks
+      // /api/objects?all=1      -> everything (admin)
       if (path === '/api/objects' && method === 'GET') {
-        const r = await realFetch(`${SUPA}/pokemind_objects?select=*&order=created_at`, { headers: H });
+        const q = new URL(raw, location.href).searchParams;
+        let filter = '&space_id=is.null';
+        if (q.get('space')) filter = `&space_id=eq.${encodeURIComponent(q.get('space'))}`;
+        else if (q.get('all')) filter = '';
+        const r = await realFetch(`${SUPA}/pokemind_objects?select=*&order=created_at${filter}`, { headers: H });
         return j((await r.json()).map(rowToObj));
       }
       if (path === '/api/objects' && method === 'POST') {
@@ -59,6 +72,10 @@
             floor: Math.max(0, Math.floor(Number(b.floor) || 0)),
             building_id: b.buildingId || null,
             building_name: b.buildingName || null,
+            space_id: b.spaceId || null,
+            owner_id: b.ownerId || null,
+            owner_name: b.ownerName ? String(b.ownerName).slice(0, 40) : null,
+            kind: b.kind === 'artwork' ? 'artwork' : 'wild',
           }),
         });
         return j(rowToObj((await r.json())[0]), 201);
@@ -93,6 +110,71 @@
         return j({ deleted: 1 });
       }
 
+      // ---- spaces (claimed territories / homes) ----
+      if (path === '/api/spaces' && method === 'GET') {
+        const r = await realFetch(`${SUPA}/pokemind_spaces?select=*&order=created_at.desc`, { headers: H });
+        return j((await r.json()).map(rowToSpace));
+      }
+      if (path === '/api/spaces' && method === 'POST') {
+        const b = JSON.parse(init.body || '{}');
+        const r = await realFetch(`${SUPA}/pokemind_spaces`, {
+          method: 'POST',
+          headers: { ...H, Prefer: 'return=representation' },
+          body: JSON.stringify({
+            name: String(b.name || 'My space').slice(0, 60),
+            owner_id: b.ownerId || null,
+            owner_name: b.ownerName ? String(b.ownerName).slice(0, 40) : null,
+            polygon: b.polygon || null,
+            lat: Number(b.lat), lng: Number(b.lng),
+            wifi_ssid: b.wifiSsid ? String(b.wifiSsid).slice(0, 64) : null,
+            wifi_pass: b.wifiPass ? String(b.wifiPass).slice(0, 64) : null,
+          }),
+        });
+        return j(rowToSpace((await r.json())[0]), 201);
+      }
+      if (path.startsWith('/api/spaces/') && method === 'GET') {
+        const id = path.slice('/api/spaces/'.length);
+        const r = await realFetch(`${SUPA}/pokemind_spaces?id=eq.${encodeURIComponent(id)}&select=*`, { headers: H });
+        const rows = await r.json();
+        return rows[0] ? j(rowToSpace(rows[0])) : j({ error: 'space not found' }, 404);
+      }
+      if (path.startsWith('/api/spaces/') && method === 'PATCH') {
+        const id = path.slice('/api/spaces/'.length);
+        const b = JSON.parse(init.body || '{}');
+        const patch = {};
+        if ('name' in b) patch.name = String(b.name || 'My space').slice(0, 60);
+        if ('wifiSsid' in b) patch.wifi_ssid = b.wifiSsid ? String(b.wifiSsid).slice(0, 64) : null;
+        if ('wifiPass' in b) patch.wifi_pass = b.wifiPass ? String(b.wifiPass).slice(0, 64) : null;
+        const r = await realFetch(`${SUPA}/pokemind_spaces?id=eq.${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { ...H, Prefer: 'return=representation' },
+          body: JSON.stringify(patch),
+        });
+        const rows = await r.json();
+        return rows[0] ? j(rowToSpace(rows[0])) : j({ error: 'space not found' }, 404);
+      }
+      if (path.startsWith('/api/spaces/') && method === 'DELETE') {
+        const id = path.slice('/api/spaces/'.length);
+        // orphan the space's artworks too — they belong to the home
+        await realFetch(`${SUPA}/pokemind_objects?space_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: H });
+        await realFetch(`${SUPA}/pokemind_spaces?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: H });
+        return j({ deleted: 1 });
+      }
+
+      // ---- players (trainer identities) ----
+      if (path === '/api/players' && method === 'POST') {
+        const b = JSON.parse(init.body || '{}');
+        const row = { name: String(b.name || 'Trainer').slice(0, 40) };
+        if (b.id) row.id = b.id;
+        const r = await realFetch(`${SUPA}/pokemind_players?on_conflict=id`, {
+          method: 'POST',
+          headers: { ...H, Prefer: 'resolution=merge-duplicates,return=representation' },
+          body: JSON.stringify(row),
+        });
+        const rows = await r.json();
+        return j({ id: rows[0].id, name: rows[0].name }, 201);
+      }
+
       // ---- calibration & settings ----
       if (path === '/api/calibration' && method === 'GET') {
         const [calib, settings] = await Promise.all([getState('calibration'), getState('settings')]);
@@ -124,5 +206,29 @@
     } catch (e) {
       return j({ error: e.message }, 500);
     }
+  };
+
+  // ---- trainer identity (name + device id, no passwords) ----
+  // PokeID.get() -> {id, name} | null      PokeID.ensure(name) -> {id, name}
+  const ID_KEY = 'pokemind_player';
+  window.PokeID = {
+    get() {
+      try { return JSON.parse(localStorage.getItem(ID_KEY)) || null; } catch { return null; }
+    },
+    async ensure(name) {
+      let p = this.get();
+      const newName = String(name || (p && p.name) || 'Trainer').slice(0, 40).trim() || 'Trainer';
+      if (!p) p = { id: crypto.randomUUID(), name: newName };
+      else p.name = newName;
+      localStorage.setItem(ID_KEY, JSON.stringify(p));
+      try {
+        await window.fetch('/api/players', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(p),
+        });
+      } catch {} // offline is fine — identity still works locally
+      return p;
+    },
   };
 })();
