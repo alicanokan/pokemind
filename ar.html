@@ -125,6 +125,17 @@
     padding: 10px 14px; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,.5);
   }
   @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+  #motionBanner {
+    position: fixed; z-index: 45; left: 50%; transform: translateX(-50%);
+    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 74px);
+    background: rgba(238,21,21,.95); color: #fff; border-radius: 16px; padding: 12px 16px;
+    width: min(92vw, 430px); text-align: center; font-size: .85rem; line-height: 1.5;
+    box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  }
+  #motionBanner button {
+    margin-top: 10px; background: #fff; color: #ee1515; border: none;
+    border-radius: 999px; padding: 12px 20px; font-weight: 800; font-size: .95rem;
+  }
   #calibBadge {
     position: fixed; z-index: 40; top: calc(max(12px, env(safe-area-inset-top)) + 44px);
     left: 50%; transform: translateX(-50%); background: rgba(255,140,0,.92); color: #fff;
@@ -188,6 +199,7 @@
   <button id="closeMap">Back to AR 📷</button>
 </div>
 <div id="calibBadge" hidden></div>
+<div id="motionBanner" hidden></div>
 
 <div id="pokedexPanel">
   <h2>Your Pokédex</h2>
@@ -256,16 +268,23 @@ if (SPACE_ID) {
   }).catch(() => {});
 }
 
+let motionPermission = 'unknown'; // granted | denied | error | not-needed
 document.getElementById('startBtn').addEventListener('click', async () => {
-  // iOS 13+ requires an explicit user-gesture permission for compass/motion
+  // iOS 13+ requires an explicit user-gesture permission for compass/motion.
+  // Fire both requests synchronously inside THIS tap — an await between them
+  // can fall outside the gesture window and get auto-denied.
   try {
-    if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
-      await DeviceOrientationEvent.requestPermission();
+    const asks = [];
+    if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission)
+      asks.push(DeviceOrientationEvent.requestPermission());
+    if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission)
+      asks.push(DeviceMotionEvent.requestPermission());
+    if (!asks.length) motionPermission = 'not-needed';
+    else {
+      const results = await Promise.allSettled(asks);
+      motionPermission = results[0].status === 'fulfilled' ? results[0].value : 'error';
     }
-    if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
-      await DeviceMotionEvent.requestPermission();
-    }
-  } catch (e) { /* user denied — AR.js will still try */ }
+  } catch (e) { motionPermission = 'error'; }
 
   document.getElementById('startOverlay').remove();
   statusEl.hidden = false;
@@ -273,7 +292,52 @@ document.getElementById('startBtn').addEventListener('click', async () => {
   document.getElementById('mapBtn').hidden = false;
   document.getElementById('dropBtn').hidden = false;
   buildScene();
+  startMotionWatchdog();
 });
+
+// ---------- motion / compass watchdog ----------
+// If iOS blocks the motion sensors (a single past "Don't Allow" sticks!), the
+// camera feed still shows but the AR view can NEVER turn — the pokemon looks
+// glued to one spot on the screen. Detect that and walk the player out of it.
+let sawOrientation = false;
+window.addEventListener('deviceorientation', () => {
+  sawOrientation = true;
+  const b = document.getElementById('motionBanner');
+  if (b && !b.hidden) { b.hidden = true; showToast('🧭 Motion tracking is ON — look around!'); }
+}, { passive: true });
+
+function motionHelp(denied) {
+  const b = document.getElementById('motionBanner');
+  b.hidden = false;
+  if (denied) {
+    b.innerHTML = '🧭 <b>iOS is blocking motion for this site</b>, so the camera can\'t look around.<br>' +
+      'Fix: <b>close this tab completely</b> (swipe it away), reopen the game, and tap <b>Allow</b> on the motion popup.<br>' +
+      '<span style="opacity:.85">Until then you can drag the screen with a finger to look around.</span>';
+    return;
+  }
+  b.innerHTML = '🧭 <b>Your phone isn\'t sending motion data</b> — the AR view can\'t turn with you.<br>';
+  const btn = document.createElement('button');
+  btn.textContent = '🔓 Enable motion tracking';
+  btn.addEventListener('click', async () => {
+    try {
+      const r = DeviceOrientationEvent.requestPermission
+        ? await DeviceOrientationEvent.requestPermission() : 'granted';
+      if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission)
+        DeviceMotionEvent.requestPermission().catch(() => {});
+      if (r === 'granted') {
+        b.hidden = true;
+        setTimeout(() => { if (!sawOrientation) motionHelp(true); }, 2500);
+      } else motionHelp(true);
+    } catch { motionHelp(true); }
+  });
+  b.appendChild(btn);
+}
+
+function startMotionWatchdog() {
+  if (!/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) return; // desktop has no sensors
+  if (motionPermission === 'denied') { motionHelp(true); return; }
+  setTimeout(() => { if (!sawOrientation) motionHelp(motionPermission === 'denied'); }, 4000);
+}
 
 function buildScene() {
   document.body.insertAdjacentHTML('beforeend', `
