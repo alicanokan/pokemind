@@ -174,13 +174,28 @@ function addBuildingPoly(b) {
   const poly = L.polygon(b.polygon, {
     color: '#3b4cca', weight: 3, fillColor: '#3b4cca', fillOpacity: .22,
   }).addTo(map);
-  poly.bindTooltip(`🏠 ${b.name} · ${b.floors}F`, { className: 'bld-tooltip', direction: 'center' });
+  poly.bindTooltip(`🏠 ${escHtml(b.name)} · ${b.floors}F`, { className: 'bld-tooltip', direction: 'center' });
   bldPolys.set(b.id, poly);
 }
 
 async function loadBuildings() {
-  buildings = await (await fetch('/api/buildings')).json();
+  try { buildings = await (await fetch('/api/buildings')).json(); } catch { buildings = []; }
+  if (!Array.isArray(buildings)) buildings = [];
   buildings.forEach(addBuildingPoly);
+}
+
+// claimed spaces — green dashed territories, so you can see who owns what
+async function loadSpaces() {
+  let spaces = [];
+  try { spaces = await (await fetch('/api/spaces')).json(); } catch {}
+  if (!Array.isArray(spaces)) spaces = [];
+  for (const s of spaces) {
+    if (!s.polygon || s.polygon.length < 3) continue;
+    const poly = L.polygon(s.polygon, {
+      color: '#2ecc71', weight: 3, fillColor: '#2ecc71', fillOpacity: .15, dashArray: '6 6',
+    }).addTo(map);
+    poly.bindTooltip(`🚩 ${escHtml(s.name)} · ${escHtml(s.ownerName || '?')}`, { className: 'bld-tooltip', direction: 'center' });
+  }
 }
 
 // ---------- placement ----------
@@ -189,16 +204,18 @@ const markers = new Map(); // id -> Leaflet marker
 function addMarker(o) {
   const icon = L.divIcon({
     className: 'poke-marker',
-    html: `<img src="${o.sprite}" alt="${o.name}">`,
+    html: `<img src="${escHtml(o.sprite)}" alt="${escHtml(o.name)}">`,
     iconSize: [44, 44],
     iconAnchor: [22, 40],
   });
   const m = L.marker([o.lat, o.lng], { icon }).addTo(map);
-  const where = o.buildingName
-    ? `🏠 ${o.buildingName}${o.floor > 0 ? ' · floor ' + o.floor : ' · ground floor'}`
-    : 'outdoors';
+  const where = o.kind === 'artwork'
+    ? `🎨 artwork by ${escHtml(o.ownerName || '?')}`
+    : o.buildingName
+      ? `🏠 ${escHtml(o.buildingName)}${o.floor > 0 ? ' · floor ' + o.floor : ' · ground floor'}`
+      : 'outdoors';
   m.bindPopup(`
-    <div class="popup-name">${o.name}</div>
+    <div class="popup-name">${escHtml(o.name)}</div>
     <div class="popup-sub">${where}</div>
     <button class="popup-del" onclick="removeObject('${o.id}')">Remove</button>`);
   markers.set(o.id, m);
@@ -218,6 +235,7 @@ async function place(p, lat, lng, extra = {}) {
     body: JSON.stringify({ name: p.name, sprite: SPRITE(p.id), lat, lng, ...extra }),
   });
   const obj = await res.json();
+  if (!res.ok || obj.error || !obj.id) { alert('Could not place it — try again.'); return; }
   addMarker(obj);
   updateCount();
 }
@@ -233,7 +251,7 @@ map.on('click', e => {
   const div = document.createElement('div');
   div.className = 'floor-popup';
   div.innerHTML = `
-    <b>🏠 ${bld.name}</b><br>Hide <b style="text-transform:capitalize">${selected.name}</b> on:
+    <b>🏠 ${escHtml(bld.name)}</b><br>Hide <b style="text-transform:capitalize">${selected.name}</b> on:
     <select>${opts}</select>
     <button>Place here</button>`;
   const popup = L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
@@ -273,7 +291,9 @@ const calibStart = document.getElementById('calibStart');
 const calibControls = document.getElementById('calibControls');
 const calibHeightEl = document.getElementById('calibHeight');
 
+let calibVer = 0;
 async function postCalib(patch) {
+  calibVer++;
   calib = { ...calib, ...patch };
   await fetch('/api/calibration', {
     method: 'POST',
@@ -284,8 +304,12 @@ async function postCalib(patch) {
 }
 
 async function pollCalib() {
-  try { calib = await (await fetch('/api/calibration')).json(); }
+  const v = calibVer;
+  let fresh;
+  try { fresh = await (await fetch('/api/calibration')).json(); }
   catch { return; }
+  if (v !== calibVer) return; // we posted while polling — poll result is stale
+  calib = fresh;
   renderCalib();
 }
 
@@ -357,7 +381,10 @@ setInterval(pollCalib, 3000);
 
 (async function init() {
   await loadBuildings();
-  const objects = await (await fetch('/api/objects')).json();
+  loadSpaces();
+  let objects = [];
+  try { objects = await (await fetch('/api/objects?all=1')).json(); } catch {}
+  if (!Array.isArray(objects)) objects = [];
   objects.forEach(addMarker);
   updateCount();
   if (objects.length) {

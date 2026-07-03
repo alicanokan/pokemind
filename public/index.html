@@ -3,64 +3,125 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PokeMind — AR Pokémon Hunt</title>
+<title>PokeMind — Catch Pokémon in YOUR world</title>
+<meta name="description" content="A web AR Pokémon hunt: map your house, claim your space, place Pokémon in the real world and catch them through your phone camera. No app needed.">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff;
+    background: linear-gradient(160deg, #2a75bb 0%, #3b4cca 55%, #232d7a 100%);
     min-height: 100vh; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 22px; padding: 24px; text-align: center;
-    background: linear-gradient(160deg, #2a75bb 0%, #3b4cca 100%); color: #fff;
+    padding: 40px 18px 60px; gap: 34px; text-align: center;
   }
-  h1 { font-size: 2.4rem; color: #ffcb05; text-shadow: 2px 2px 0 #2a75bb, 4px 4px 0 rgba(0,0,0,.3); }
-  p.tag { opacity: .9; max-width: 520px; line-height: 1.5; }
-  .buttons { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  .ball {
+    width: 74px; height: 74px; border-radius: 50%; position: relative; margin: 0 auto;
+    background: linear-gradient(180deg, #ee1515 0 46%, #222 46% 54%, #fff 54% 100%);
+    box-shadow: 0 10px 30px rgba(0,0,0,.45); animation: bounce 2.6s ease-in-out infinite;
+  }
+  .ball::after {
+    content: ''; position: absolute; inset: 0; margin: auto; width: 22px; height: 22px;
+    border-radius: 50%; background: #fff; border: 5px solid #222;
+  }
+  @keyframes bounce { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-12px) } }
+  h1 {
+    font-size: clamp(2.4rem, 9vw, 3.6rem); color: #ffcb05; letter-spacing: 1px;
+    text-shadow: 3px 3px 0 #2a75bb, 6px 6px 0 rgba(0,0,0,.35); margin-top: 14px;
+  }
+  .tag { opacity: .95; max-width: 560px; line-height: 1.55; font-size: 1.05rem; }
+  .tag b { color: #ffcb05; }
+
+  .qrs { display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; }
+  .qr {
+    background: #fff; padding: 18px 18px 14px; border-radius: 22px; color: #2a75bb;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    width: 232px; box-shadow: 0 10px 26px rgba(0,0,0,.35);
+    text-decoration: none; transition: transform .15s;
+  }
+  .qr:active { transform: scale(.97); }
+  .qr img { display: block; width: 170px; height: 170px; }
+  .qr b { font-size: 1rem; }
+  .qr span { font-size: .78rem; color: #667; line-height: 1.4; }
+  .qr .chip {
+    font-size: .72rem; font-weight: 800; letter-spacing: .5px; border-radius: 999px;
+    padding: 4px 12px; text-transform: uppercase;
+  }
+  .chip.play { background: #ffcb05; color: #2a75bb; }
+  .chip.claim { background: #2ecc71; color: #fff; }
+
+  .buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; max-width: 560px; }
   a.btn {
-    display: inline-block; padding: 16px 28px; border-radius: 999px; font-size: 1.1rem;
+    display: inline-block; padding: 15px 26px; border-radius: 999px; font-size: 1.05rem;
     font-weight: 700; text-decoration: none; transition: transform .15s;
   }
   a.btn:active { transform: scale(.96); }
-  .play { background: #ffcb05; color: #2a75bb; box-shadow: 0 6px 0 #c7a008; }
-  .house { background: #2ecc71; color: #fff; box-shadow: 0 6px 0 #1e8f4e; }
-  .admin { background: #fff; color: #3b4cca; box-shadow: 0 6px 0 #b8b8d0; }
-  .qrs { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
-  .qr {
-    background: #fff; padding: 14px; border-radius: 16px; color: #2a75bb;
-    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  .play-btn { background: #ffcb05; color: #2a75bb; box-shadow: 0 6px 0 #c7a008; }
+  .space-btn { background: #2ecc71; color: #fff; box-shadow: 0 6px 0 #1e8f4e; }
+  .house-btn { background: #fff; color: #3b4cca; box-shadow: 0 6px 0 #b8b8d0; }
+  .admin-btn { background: rgba(255,255,255,.14); color: #fff; border: 2px solid rgba(255,255,255,.4); }
+
+  .how {
+    background: rgba(0,0,0,.22); border-radius: 24px; padding: 26px 22px;
+    max-width: 640px; width: 100%; display: flex; flex-direction: column; gap: 18px;
   }
-  .qr img { display: block; width: 160px; height: 160px; }
-  .qr b { font-size: .9rem; }
-  .qr code { font-size: .68rem; background: #eef; color: #3b4cca; padding: 2px 6px; border-radius: 6px; }
-  .hint { font-size: .85rem; opacity: .85; max-width: 460px; line-height: 1.6; }
-  .hint code { background: rgba(0,0,0,.25); padding: 2px 6px; border-radius: 6px; }
+  .how h2 { color: #ffcb05; font-size: 1.3rem; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; text-align: left; }
+  .step { background: rgba(255,255,255,.09); border-radius: 16px; padding: 14px 16px; line-height: 1.5; font-size: .9rem; }
+  .step b { color: #ffcb05; display: block; margin-bottom: 4px; font-size: 1rem; }
+
+  .hint { font-size: .82rem; opacity: .8; max-width: 480px; line-height: 1.6; }
+  .hint code { background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 6px; }
 </style>
 </head>
 <body>
-  <h1>⚡ PokeMind</h1>
-  <p class="tag">Map your house, place Pokémon on the real-world map (even inside buildings, on any floor!),
-  then walk around and catch them in AR through your phone camera.</p>
-  <div class="buttons">
-    <a class="btn play" href="ar.html">📱 Play AR</a>
-    <a class="btn house" href="mapper.html">🏠 Map My House</a>
-    <a class="btn admin" href="admin.html">🗺️ Admin Map</a>
+  <div>
+    <div class="ball"></div>
+    <h1>⚡ PokeMind</h1>
   </div>
+  <p class="tag">Pokémon are hiding in <b>your real world</b> — in the park, inside your house, even on the 3rd floor.
+  Hunt them through your phone camera, <b>claim your home as your space</b>, and decorate it with Pokémon your friends can visit in AR. No app, just your browser.</p>
+
   <div class="qrs" id="qrs" hidden>
-    <div class="qr">
-      <b>📱 Play AR</b>
-      <img id="qrPlay" alt="QR: open the AR game on your phone">
-      <code id="urlPlay"></code>
-    </div>
-    <div class="qr">
-      <b>🏠 Map My House</b>
-      <img id="qrHouse" alt="QR: map your house on your phone">
-      <code id="urlHouse"></code>
+    <a class="qr" id="qrPlayCard">
+      <span class="chip play">▶ Play</span>
+      <img id="qrPlay" alt="QR: open the AR hunt on your phone">
+      <b>📱 Start the AR hunt</b>
+      <span>Scan with your phone camera — the game opens right in the browser.</span>
+    </a>
+    <a class="qr" id="qrSpaceCard">
+      <span class="chip claim">🚩 Claim</span>
+      <img id="qrSpace" alt="QR: claim your space on your phone">
+      <b>🏠 Claim your space</b>
+      <span>Mark your territory, fill it with AR artworks, get a home QR for friends.</span>
+    </a>
+  </div>
+
+  <div class="buttons">
+    <a class="btn play-btn" href="ar.html">📱 Play AR</a>
+    <a class="btn space-btn" href="spaces.html">🏠 My Spaces</a>
+    <a class="btn house-btn" href="mapper.html">🗺️ Map My House</a>
+    <a class="btn admin-btn" href="admin.html">⚙️ Admin</a>
+  </div>
+
+  <div class="how">
+    <h2>How to play</h2>
+    <div class="steps">
+      <div class="step"><b>1 · Open on your phone 📱</b>
+        Scan the Play QR (or tap Play AR). Allow <b>camera</b>, <b>location</b> and <b>motion</b> — that's how Pokémon appear in your world.</div>
+      <div class="step"><b>2 · Hunt & catch 🎯</b>
+        The map shows where Pokémon hide. Walk within 40&nbsp;m, look around through the camera, and tap them to catch!</div>
+      <div class="step"><b>3 · Claim your space 🚩</b>
+        Walk around your home (or trace it on the map) — it becomes YOUR territory with your name on it.</div>
+      <div class="step"><b>4 · Decorate & share 🎨</b>
+        Place Pokémon in your space as AR artworks and print your <b>home QR</b> — friends scan it and see your collection floating in your rooms.</div>
     </div>
   </div>
-  <p class="hint">Scan with your phone (same Wi-Fi). Allow <b>camera</b>, <b>location</b> and <b>motion</b> access.
-  If the browser warns about the certificate, tap <i>Show details → Visit website</i> (it's your own local server).</p>
+
+  <p class="hint">Indoors, GPS wobbles — open the map and tap <b>🎯 I'm here</b> on your exact spot for table-level precision.
+  On a local dev server, if the browser warns about the certificate tap <i>Show details → Visit website</i>.</p>
+
 <script src="api.js"></script>
 <script>
-  const QR = 'https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=';
+  const QR = 'https://api.qrserver.com/v1/create-qr-code/?size=340x340&data=';
   fetch('/api/info').then(r => r.json()).then(info => {
     // on public hosting, QRs use this page's own address (subpath-safe);
     // on the local dev server they use the Mac's LAN HTTPS address
@@ -68,11 +129,11 @@
     const dir = new URL('.', location.href).href.replace(/\/$/, '');
     const base = isLocal ? info.lanUrl : dir;
     const play = base + '/ar.html';
-    const house = base + '/mapper.html';
+    const claim = base + '/spaces.html';
     document.getElementById('qrPlay').src = QR + encodeURIComponent(play);
-    document.getElementById('qrHouse').src = QR + encodeURIComponent(house);
-    document.getElementById('urlPlay').textContent = play;
-    document.getElementById('urlHouse').textContent = house;
+    document.getElementById('qrSpace').src = QR + encodeURIComponent(claim);
+    document.getElementById('qrPlayCard').href = play;
+    document.getElementById('qrSpaceCard').href = claim;
     document.getElementById('qrs').hidden = false;
   }).catch(() => {});
 </script>

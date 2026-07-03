@@ -84,6 +84,7 @@
       <input id="nameInput" maxlength="40" placeholder="e.g. Alican">
     </div>
     <button class="btn green" id="nameSave">Save</button>
+    <button class="btn ghost small" id="nameLater" style="color:#666;border-color:#ccc">Maybe later — just looking 👀</button>
   </div>
 </div>
 
@@ -139,6 +140,7 @@ document.getElementById('trainerBadge').addEventListener('click', () => {
   document.getElementById('nameInput').value = me()?.name || '';
   document.getElementById('nameModal').classList.add('open');
 });
+document.getElementById('nameLater').addEventListener('click', () => document.getElementById('nameModal').classList.remove('open'));
 document.getElementById('nameSave').addEventListener('click', async () => {
   const name = document.getElementById('nameInput').value.trim();
   if (!name) return;
@@ -236,6 +238,7 @@ document.getElementById('editSave').addEventListener('click', async () => {
     body: JSON.stringify(patch),
   });
   const updated = await r.json();
+  if (!r.ok || updated.error || !updated.id) { alert('Could not save — try again.'); return; }
   spaces = spaces.map(s => s.id === updated.id ? updated : s);
   document.getElementById('editModal').classList.remove('open');
   render();
@@ -245,7 +248,8 @@ document.getElementById('editSave').addEventListener('click', async () => {
   renderTrainer();
   if (!me()) document.getElementById('nameModal').classList.add('open'); // first visit: introduce yourself
   try { spaces = await (await fetch('/api/spaces')).json(); }
-  catch { listEl.innerHTML = '<p class="empty">Could not load spaces 😕 — check your connection.</p>'; return; }
+  catch { spaces = null; }
+  if (!Array.isArray(spaces)) { listEl.innerHTML = '<p class="empty">Could not load spaces 😕 — check your connection.</p>'; return; }
   render();
 })();
 </script>

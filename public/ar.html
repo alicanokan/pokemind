@@ -31,7 +31,8 @@
   #status {
     top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
     background: rgba(0,0,0,.6); color: #fff; padding: 8px 16px; border-radius: 999px;
-    font-size: .85rem; white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis;
+    font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: calc(100vw - 132px); /* leave room for the 🏠 button on phones */
   }
   #pokedexBtn {
     bottom: max(18px, env(safe-area-inset-bottom)); right: 16px; pointer-events: auto;
@@ -247,7 +248,7 @@ if (SPACE_ID) {
       const h1 = document.querySelector('#startOverlay h1');
       const p = document.querySelector('#startOverlay p');
       if (h1) h1.textContent = `🏠 ${s.name}`;
-      if (p) p.innerHTML = `Welcome to <b>${s.ownerName || 'a trainer'}</b>'s space! ` +
+      if (p) p.innerHTML = `Welcome to <b>${escHtml(s.ownerName || 'a trainer')}</b>'s space! ` +
         `Pokémon here are <b>AR artworks</b> — look around with your camera to find them, or place your own with <b>🎨 Place</b>.`;
       drawMiniSpace(); // no-op unless the mini map already exists
       refreshStatus();
@@ -388,6 +389,7 @@ async function pollCalibration() {
 async function loadBuildings() {
   try { buildings = await (await fetch('/api/buildings')).json(); }
   catch { buildings = []; }
+  if (!Array.isArray(buildings)) buildings = [];
   drawMiniBuildings();
 }
 
@@ -395,6 +397,7 @@ async function loadObjects() {
   let objects;
   try { objects = await (await fetch(SPACE_ID ? '/api/objects?space=' + SPACE_ID : '/api/objects')).json(); }
   catch { return; }
+  if (!Array.isArray(objects)) return; // error payload — keep the current world
 
   const alive = new Set();
   for (const o of objects) {
@@ -432,6 +435,7 @@ function spawn(o) {
   img.addEventListener('click', () => tryCatch(o));
 
   root.setAttribute('scale', '1.5 1.5 1.5'); // sensible size until first GPS fix arrives
+  root.setAttribute('visible', 'false');       // shown by positionAll once we know where we are
   lift.appendChild(img);
   root.appendChild(lift);
   scene.appendChild(root);
@@ -463,6 +467,7 @@ function positionAll() {
     const { east, north } = metersOffset(myPos, p.o);
     // AR.js world axes: +x = east, -z = north; keep them ~1m below eye level
     p.root.object3D.position.set(cp.x + east, cp.y - 1, cp.z - north);
+    if (p.root.getAttribute('visible') === false) p.root.setAttribute('visible', 'true');
   }
   if (calibRoot && calibState) {
     const { east, north } = metersOffset(myPos, calibState);
@@ -479,6 +484,7 @@ function tryCatch(o) {
     return;
   }
   const d = myPos ? distMeters(myPos, o) : Infinity;
+  if (!isFinite(d)) { showToast('Waiting for GPS… 🛰️'); return; }
   if (d > CATCH_RADIUS) {
     showToast(`${cap(o.name)} is ${Math.round(d)}m away — get closer!`);
     return;
@@ -648,7 +654,7 @@ function updateMiniMe() {
   } else {
     meMarker.setLatLng(ll);
     meCircle.setLatLng(ll);
-    if (followMe) miniMap.panTo(ll);
+    if (followMe && !placing && !imHereArmed) miniMap.panTo(ll); // don't yank the map mid-aim
   }
 }
 
@@ -658,14 +664,14 @@ function drawMiniPokes() {
     if (miniPoke.has(p.o.id)) continue;
     const icon = L.divIcon({
       className: 'poke-mini',
-      html: `<img src="${p.o.sprite}" alt="${p.o.name}">`,
+      html: `<img src="${escHtml(p.o.sprite)}" alt="${escHtml(p.o.name)}">`,
       iconSize: [38, 38], iconAnchor: [19, 34],
     });
     const m = L.marker([p.o.lat, p.o.lng], { icon }).addTo(miniMap);
     if (p.o.kind === 'artwork' && PokeID.get()?.id === p.o.ownerId) {
       // your own artwork — popup with a remove button
       const div = document.createElement('div');
-      div.innerHTML = `<b style="text-transform:capitalize">🎨 ${p.o.name}</b> (yours)<br>`;
+      div.innerHTML = `<b style="text-transform:capitalize">🎨 ${escHtml(p.o.name)}</b> (yours)<br>`;
       const btn = document.createElement('button');
       btn.textContent = 'Remove artwork';
       btn.style.cssText = 'margin-top:6px;background:#ee1515;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-weight:700';
@@ -681,7 +687,7 @@ function drawMiniPokes() {
       m.bindPopup(div);
     } else {
       const by = p.o.kind === 'artwork' ? ` · by ${p.o.ownerName || '?'}` : '';
-      m.bindTooltip(`${cap(p.o.name)}${floorLabel(p.o)}${by}`, { direction: 'top' });
+      m.bindTooltip(escHtml(`${cap(p.o.name)}${floorLabel(p.o)}${by}`), { direction: 'top' });
     }
     miniPoke.set(p.o.id, m);
   }
@@ -693,7 +699,7 @@ function drawMiniSpace() {
   miniSpaceLayer = L.polygon(space.polygon, {
     color: '#2ecc71', weight: 3, fillColor: '#2ecc71', fillOpacity: .12, dashArray: '6 6',
   }).addTo(miniMap);
-  miniSpaceLayer.bindTooltip(`🏠 ${space.name}`, { direction: 'center' });
+  miniSpaceLayer.bindTooltip(`🏠 ${escHtml(space.name)}`, { direction: 'center' });
 }
 
 function drawMiniBuildings() {
@@ -701,7 +707,7 @@ function drawMiniBuildings() {
   miniBuildLayer?.remove();
   miniBuildLayer = L.layerGroup(buildings.map(b => {
     const poly = L.polygon(b.polygon, { color: '#3b4cca', weight: 2, fillColor: '#3b4cca', fillOpacity: .2 });
-    poly.bindTooltip(`🏠 ${b.name} · ${b.floors}F`, { direction: 'center' });
+    poly.bindTooltip(`🏠 ${escHtml(b.name)} · ${b.floors}F`, { direction: 'center' });
     return poly;
   })).addTo(miniMap);
 }
@@ -793,6 +799,7 @@ function setPlacePin(latlng) {
 }
 
 confirmPlace.addEventListener('click', async () => {
+  if (!placing || !placePin) return; // double-tap protection
   const ll = placePin.getLatLng();
   const p = placing;
   endPlacing();
@@ -801,6 +808,7 @@ confirmPlace.addEventListener('click', async () => {
 });
 
 quickDrop.addEventListener('click', async () => {
+  if (!placing) return; // double-tap protection
   if (!myPos) { showToast('Waiting for GPS…'); return; } // keep placement mode alive
   const p = placing;
   endPlacing();
@@ -851,6 +859,7 @@ async function dropAt(p, lat, lng, message) {
       body: JSON.stringify(body),
     });
     obj = await res.json();
+    if (!res.ok || !obj || obj.error || !obj.id) throw new Error(obj && obj.error);
   } catch { showToast('Could not reach the server 😕'); return; }
   spawn(obj);
   rescaleAll();
@@ -863,7 +872,7 @@ async function dropAt(p, lat, lng, message) {
 dexBtn.addEventListener('click', () => {
   const list = document.getElementById('caughtList');
   list.innerHTML = caught.length
-    ? caught.map(c => `<div class="caught"><img src="${c.sprite}" alt=""><div>${cap(c.name)}</div></div>`).join('')
+    ? caught.map(c => `<div class="caught"><img src="${escHtml(c.sprite)}" alt=""><div>${escHtml(cap(c.name))}</div></div>`).join('')
     : '<p>Nothing caught yet — go hunt!</p>';
   dexPanel.classList.add('open');
 });
